@@ -1,10 +1,10 @@
 use microglut::{
-    glam::Vec3,
+    glam::{Vec2, Vec3},
     glow::{
         Context, HasContext, NativeProgram, NativeVertexArray, ARRAY_BUFFER, COLOR_BUFFER_BIT,
         DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT, STATIC_DRAW, TRIANGLES,
     },
-    load_shaders, MicroGLUT, Window,
+    load_shaders, MicroGLUT, Texture, Window,
 };
 
 fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, message: String) {
@@ -24,10 +24,12 @@ struct App {
 impl MicroGLUT for App {
     fn init(gl: &Context, window: &Window) -> Self {
         let vertices = [
-            Vec3::new(-0.5, -0.5, 0.0),
-            Vec3::new(-0.5, 0.5, 0.0),
-            Vec3::new(0.5, -0.5, 0.0),
+            Vec3::new(-1.0, -1.0, 0.0),
+            Vec3::new(3.0, -1.0, 0.0),
+            Vec3::new(-1.0, 3.0, 0.0),
         ];
+
+        let texcoords = [Vec2::ZERO, Vec2::new(2.0, 0.0), Vec2::new(0.0, 2.0)];
 
         unsafe {
             gl.clear_color(0.2, 0.2, 0.5, 0.0);
@@ -37,6 +39,7 @@ impl MicroGLUT for App {
                 include_str!("vertex.glsl"),
                 include_str!("fragment.glsl"),
             );
+            gl.use_program(Some(program));
 
             let vao = gl.create_vertex_array().unwrap();
             gl.bind_vertex_array(Some(vao));
@@ -49,7 +52,21 @@ impl MicroGLUT for App {
             gl.vertex_attrib_pointer_f32(pos_loc, 3, FLOAT, false, 0, 0);
             gl.enable_vertex_attrib_array(pos_loc);
 
-            gl.use_program(Some(program));
+            let texcoord_vbo = gl.create_buffer().unwrap();
+            gl.bind_buffer(ARRAY_BUFFER, Some(texcoord_vbo));
+            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&texcoords), STATIC_DRAW);
+
+            let texcoord_loc = gl.get_attrib_location(program, "tex_coord").unwrap();
+            gl.vertex_attrib_pointer_f32(texcoord_loc, 2, FLOAT, false, 0, 0);
+            gl.enable_vertex_attrib_array(texcoord_loc);
+
+            let _texture_data = Texture::load(
+                gl,
+                include_bytes!(
+                    "../../microglut/examples/16-simple-06-textured-quad/maskros512.tga"
+                ),
+                false,
+            );
 
             App { program, vao }
         }
