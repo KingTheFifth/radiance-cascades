@@ -1,0 +1,9 @@
+[package]
+name = "rc_2d"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+microglut = { path = "../microglut" }
+bytemuck = { version = "1.19.0", features = ["derive"] }
+
