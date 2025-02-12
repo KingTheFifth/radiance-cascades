@@ -1,6 +1,6 @@
 #version 450
 
-in vec2 v_tex_coord;
+in vec2 tex_coord;
 out vec4 color;
 
 const float EPSILON = 0.0001;
@@ -77,12 +77,12 @@ vec4 merge(vec4 radiance, float neighbour_index, vec2 dir_block_size, vec2 dir_b
 }
 
 void main(void) {
-    const vec2 coord = floor(v_tex_coord * cascade_dimensions);
+    const vec2 coord = floor(tex_coord * cascade_dimensions);
     const float angular_res_sqr = pow(2.0, cascade_index);    //"angular" (number of rays), TODO: turn into uniform
 
     const vec2 dir_block_size = cascade_dimensions / angular_res_sqr;  //"extent", TODO: uniform
     const vec2 dir_block_index = mod(coord, dir_block_size); //"probe.xy"
-    const vec2 probe_pos = floor(v_tex_coord * angular_res_sqr); //"probe.zw"
+    const vec2 probe_pos = floor(tex_coord * angular_res_sqr); //"probe.zw"
 
     const float ray_offset = (c0_interval_length * (1.0 - pow(4.0, cascade_index))) / (1.0 - 4.0);  //"interval", Some magic math, TODO: uniform
     const vec2 probe_spacing = vec2(c0_probe_density * angular_res_sqr); // "linear", TODO: uniform
