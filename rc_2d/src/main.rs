@@ -173,7 +173,7 @@ impl App {
 
     fn calculate_cascades(&mut self, gl: &Context) {
         let num_cascades = 4;
-        let probe_density = 1.0;
+        let probe_density = 2.0;
         let interval_length = 1.0;
         unsafe {
             for n in (0..num_cascades).rev() {
@@ -300,13 +300,12 @@ impl MicroGLUT for App {
                 include_str!("fbo_fragment.glsl"),
             );
 
-            let dist_field = FBO::init(gl, 800, 800, true);
-            let scene = FBO::init(gl, 800, 800, true);
-            let prev_cascade = FBO::init(gl, 800, 800, true);
-            let curr_cascade = FBO::init(gl, 800, 800, true);
-
-            let screen_width = 800;
-            let screen_height = 800;
+            let screen_width = 1024;
+            let screen_height = 1024;
+            let dist_field = FBO::init(gl, screen_width, screen_height, false);
+            let scene = FBO::init(gl, screen_width, screen_height, false);
+            let prev_cascade = FBO::init(gl, screen_width, screen_height, false);
+            let curr_cascade = FBO::init(gl, screen_width, screen_height, false);
 
             App {
                 quad_vao,
