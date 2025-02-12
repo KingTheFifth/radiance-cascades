@@ -26,7 +26,7 @@ void main() {
     float closest_dist = 999999.9;
     vec4 closest_data = vec4(0.0);
 
-    for (int i = 0; i < 9; i++;) {
+    for (int i = 0; i < 9; i++) {
         const vec2 jump = tex_coord + (offsets[i] * vec2(jump_dist / screen_dimensions));
         const vec4 seed = texture(tex, jump);
         const vec2 seed_pos = vec2(v2f16(seed.xy), v2f16(seed.zw));

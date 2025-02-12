@@ -27,11 +27,11 @@ float V2F16(vec2 v) {
     return v.y * float(0.0039215689) + v.x;
 }
 
-vec3 linear_to_srgb(vec4 c) {
+vec3 linear_to_srgb(vec3 c) {
     return pow(c.rgb, vec3(2.2));
 }
 
-vec3 sgrb_to_linear(vec4 c) {
+vec3 srgb_to_linear(vec3 c) {
     return pow(c.rgb, vec3(1.0 / 2.2));
 }
 
@@ -39,12 +39,11 @@ vec3 sgrb_to_linear(vec4 c) {
 vec4 raymarch(vec2 origin, vec2 direction, float max_length) {
     float df = 0.0;
     float ray_distance = 0.0;
-    float scale = length(scene);
-    for (float i = 0.0; i < max_length; i ++;) {
+    float scale = length(screen_dimensions);
+    for (float i = 0.0; i < max_length; i++) {
         vec2 ray = (origin + direction * ray_distance) * (1.0 / screen_dimensions);
         df = V2F16(texture(dist_field, ray).rg);
         ray_distance += df * scale;
-        ray_origin += ray_dir * df * scale * TEXEL;
 
         // Ray out-of-bounds or has travelled too far
         if (ray_distance >= max_length || floor(ray) != vec2(0.0)) break;
@@ -55,7 +54,7 @@ vec4 raymarch(vec2 origin, vec2 direction, float max_length) {
 
         // Ray hit => Return the colour of the hit part of the scene
         if (df <= EPSILON) {
-            return vec4(srgb(texture(scene, ray).rgb), 0.0);
+            return vec4(linear_to_srgb(texture(scene, ray).rgb), 0.0);
         }
     }
 
@@ -73,7 +72,7 @@ vec4 merge(vec4 radiance, float neighbour_index, vec2 dir_block_size, vec2 dir_b
    vec2 prev_dir_block_size = floor(cascade_dimensions / prev_angular); //TODO: uniform
    vec2 interpolation_point = vec2(mod(neighbour_index, prev_angular), floor(neighbour_index / prev_angular)) * dir_block_size;
    interpolation_point += clamp(0.5 * dir_block_index + 0.25, vec2(0.5), prev_dir_block_size - 0.5);
-   return radiance + texture(next_cascade, interpolation_point * (1.0 / cascade_dimensions));
+   return radiance + texture(prev_cascade, interpolation_point * (1.0 / cascade_dimensions));
 }
 
 void main(void) {
@@ -93,11 +92,11 @@ void main(void) {
     const float index = (probe_pos.x + (probe_pos.y * angular_res_sqr)) * 4.0;
 
     color = vec4(0.0);
-    for (float i = 0.0; i < 4.0; i++;) {
+    for (float i = 0.0; i < 4.0; i++) {
         const float preavg_ray_index = index + i;  //"preavg"
         const float ray_angle = (preavg_ray_index + 0.5) * (2.0 * 3.14159266 / angular);   //"theta"
 
-        const vec2 ray_dir = vec2(cos(angle), -sin(angle));   //"delta"
+        const vec2 ray_dir = vec2(cos(ray_angle), -sin(ray_angle));   //"delta"
         const vec2 ray_origin = origin + ray_dir * ray_offset;
 
         vec4 radiance = raymarch(ray_origin, ray_dir, interval_length);
@@ -106,6 +105,9 @@ void main(void) {
 
     // This is the colour that should be outputted to screen
     if (cascade_index == 0.0) {
-        color = vec4(sgrb_to_linear(color, 1.0));
+        color = vec4(srgb_to_linear(color.rgb), 1.0);
     }
+    //color = texture(dist_field, tex_coord);
+    //color = vec4(vec3(V2F16(texture(dist_field, tex_coord).rg)), 1.0);
+    //color = texture(scene, tex_coord);
 }
