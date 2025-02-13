@@ -173,8 +173,8 @@ impl App {
 
     fn calculate_cascades(&mut self, gl: &Context) {
         let num_cascades = 4;
-        let probe_density = 2.0;
-        let interval_length = 1.0;
+        let probe_density = 1.0;
+        let interval_length = 4.0;
         unsafe {
             for n in (0..num_cascades).rev() {
                 gl.use_program(Some(self.rc_program));
@@ -300,8 +300,8 @@ impl MicroGLUT for App {
                 include_str!("fbo_fragment.glsl"),
             );
 
-            let screen_width = 1024;
-            let screen_height = 1024;
+            let screen_width = window.size().0 as i32;
+            let screen_height = window.size().1 as i32;
             let dist_field = FBO::init(gl, screen_width, screen_height, false);
             let scene = FBO::init(gl, screen_width, screen_height, false);
             let prev_cascade = FBO::init(gl, screen_width, screen_height, false);
@@ -339,5 +339,6 @@ fn main() {
     App::sdl2_window("Radiance cascades 2D prototype")
         .gl_version(4, 5)
         .debug_message_callback(debug_message_callback)
+        .window_size(1024, 1024)
         .start();
 }

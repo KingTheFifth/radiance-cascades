@@ -70,21 +70,21 @@ vec4 merge(vec4 radiance, float neighbour_index, vec2 dir_block_size, vec2 dir_b
 
    float prev_angular = pow(2.0, floor(cascade_index + 1.0));   // TODO: uniform
    vec2 prev_dir_block_size = floor(cascade_dimensions / prev_angular); //TODO: uniform
-   vec2 interpolation_point = vec2(mod(neighbour_index, prev_angular), floor(neighbour_index / prev_angular)) * dir_block_size;
+   vec2 interpolation_point = vec2(mod(neighbour_index, prev_angular), floor(neighbour_index / prev_angular)) * prev_dir_block_size;
    interpolation_point += clamp(0.5 * dir_block_index + 0.25, vec2(0.5), prev_dir_block_size - 0.5);
    return radiance + texture(prev_cascade, interpolation_point * (1.0 / cascade_dimensions));
 }
 
 void main(void) {
     const vec2 coord = floor(tex_coord * cascade_dimensions);
-    const float angular_res_sqr = pow(2.0, cascade_index);    //"angular" (number of rays), TODO: turn into uniform
+    const float angular_res_sqr = pow(2.0, floor(cascade_index));    //"angular" (number of rays), TODO: turn into uniform
 
-    const vec2 dir_block_size = cascade_dimensions / angular_res_sqr;  //"extent", TODO: uniform
+    const vec2 dir_block_size = floor(cascade_dimensions / angular_res_sqr);  //"extent", TODO: uniform
     const vec2 dir_block_index = mod(coord, dir_block_size); //"probe.xy"
-    const vec2 probe_pos = floor(tex_coord * angular_res_sqr); //"probe.zw"
+    const vec2 probe_pos = floor(coord / dir_block_size); //"probe.zw"
 
-    const float ray_offset = (c0_interval_length * (1.0 - pow(4.0, cascade_index))) / (1.0 - 4.0);  //"interval", Some magic math, TODO: uniform
-    const vec2 probe_spacing = vec2(c0_probe_density * angular_res_sqr); // "linear", TODO: uniform
+    const float ray_offset = c0_interval_length * ((1.0 - pow(4.0, cascade_index)) / (1.0 - 4.0));  //"interval", Some magic math, TODO: uniform
+    const vec2 probe_spacing = vec2(c0_probe_density * pow(2.0, cascade_index)); // "linear", TODO: uniform
     const float interval_length = c0_interval_length * pow(4.0, cascade_index); //"limit", TODO: uniform
 
     const vec2 origin = (dir_block_index + 0.5) * probe_spacing;
@@ -93,7 +93,7 @@ void main(void) {
 
     color = vec4(0.0);
     for (float i = 0.0; i < 4.0; i++) {
-        const float preavg_ray_index = index + i;  //"preavg"
+        const float preavg_ray_index = index + float(i);  //"preavg"
         const float ray_angle = (preavg_ray_index + 0.5) * (2.0 * 3.14159266 / angular);   //"theta"
 
         const vec2 ray_dir = vec2(cos(ray_angle), -sin(ray_angle));   //"delta"
@@ -104,10 +104,18 @@ void main(void) {
     }
 
     // This is the colour that should be outputted to screen
-    if (cascade_index == 0.0) {
+    if (cascade_index == 0.0 && true) {
         color = vec4(srgb_to_linear(color.rgb), 1.0);
     }
     //color = texture(dist_field, tex_coord);
     //color = vec4(vec3(V2F16(texture(dist_field, tex_coord).rg)), 1.0);
     //color = texture(scene, tex_coord);
+    // if (cascade_index >= num_cascades - 1.0) {
+    //     //color = vec4(dir_block_index / angular_res_sqr, 0.0, 1.0);
+    //     color = vec4(dir_block_index * (1.0 / dir_block_size), 0.0, 1.0);
+    //     //color = vec4(probe_pos / (screen_dimensions / dir_block_size), 0.0, 1.0);
+    // }
+    // else {
+    //     color = texture(prev_cascade, tex_coord);
+    // }
 }
