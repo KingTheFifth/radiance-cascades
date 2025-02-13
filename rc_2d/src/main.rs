@@ -8,6 +8,7 @@ use microglut::{
     },
     load_shaders, MicroGLUT, Window, FBO,
 };
+use sprite::Sprite;
 
 fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, message: String) {
     let severity = match severity {
@@ -17,6 +18,8 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
     };
     eprintln!("[{severity}] {message}");
 }
+
+mod sprite;
 
 struct App {
     //TODO: the "quad" is actually a triangle that covers the screen. Rename it accordingly?
@@ -35,6 +38,7 @@ struct App {
     curr_cascade: FBO,
     screen_width: i32,
     screen_height: i32,
+    sprites: Vec<Sprite>,
 }
 
 impl App {
@@ -172,9 +176,16 @@ impl App {
     }
 
     fn calculate_cascades(&mut self, gl: &Context) {
-        let num_cascades = 4;
-        let probe_density = 1.0;
-        let interval_length = 4.0;
+        let num_cascades = (Vec2::ZERO.distance(Vec2::new(
+            self.screen_width as f32,
+            self.screen_height as f32,
+        )))
+        .log(4.0)
+        .ceil() as i32;
+        let probe_density = 1.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
+        let interval_length = Vec2::ZERO.distance(Vec2::new(probe_density, probe_density)) * 0.5;
+        let probe_density_adjusted = (2.0_f32).powf((probe_density).log(2.0).ceil());
+        let interval_length_adjusted = (interval_length / 2.0_f32).ceil() * 2.0;
         unsafe {
             for n in (0..num_cascades).rev() {
                 gl.use_program(Some(self.rc_program));
@@ -216,12 +227,12 @@ impl App {
                 gl.uniform_1_f32(
                     gl.get_uniform_location(self.rc_program, "c0_probe_density")
                         .as_ref(),
-                    probe_density,
+                    probe_density_adjusted,
                 );
                 gl.uniform_1_f32(
                     gl.get_uniform_location(self.rc_program, "c0_interval_length")
                         .as_ref(),
-                    interval_length,
+                    interval_length_adjusted,
                 );
 
                 gl.uniform_1_f32(
@@ -307,6 +318,8 @@ impl MicroGLUT for App {
             let prev_cascade = FBO::init(gl, screen_width, screen_height, false);
             let curr_cascade = FBO::init(gl, screen_width, screen_height, false);
 
+            let sprites = vec![];
+
             App {
                 quad_vao,
                 quad_vertex_buffer: quad_vbo,
@@ -323,6 +336,7 @@ impl MicroGLUT for App {
                 curr_cascade,
                 screen_width,
                 screen_height,
+                sprites,
             }
         }
     }

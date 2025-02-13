@@ -12,6 +12,8 @@ void main() {
     float y_sqr_3 = (tex_coord.y - 0.325) * (tex_coord.y - 0.325);
     float x_sqr_4 = (tex_coord.x - 0.35) * (tex_coord.x - 0.35);
     float y_sqr_4 = (tex_coord.y - 0.3) * (tex_coord.y - 0.3);
+    float x_sqr_5 = (tex_coord.x - 0.65) * (tex_coord.x - 0.65);
+    float y_sqr_5 = (tex_coord.y - 0.6) * (tex_coord.y - 0.6);
     if (x_sqr + y_sqr <= 0.01) {
         color = vec4(1.0, 0.0, 1.0, 1.0);
     }
@@ -23,6 +25,9 @@ void main() {
     }
     else if (x_sqr_4 + y_sqr_4 <= 0.002) {
         color = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    else if (x_sqr_5 + y_sqr_5 <= 0.002) {
+        color = vec4(1.0, 1.0, 0.0, 1.0);
     }
     else {
         color = vec4(0.0);
