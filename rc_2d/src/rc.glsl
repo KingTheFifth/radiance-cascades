@@ -28,11 +28,11 @@ float V2F16(vec2 v) {
 }
 
 vec3 linear_to_srgb(vec3 c) {
-    return pow(c.rgb, vec3(2.2));
+    return pow(c.rgb, vec3(1.6));
 }
 
 vec3 srgb_to_linear(vec3 c) {
-    return pow(c.rgb, vec3(1.0 / 2.2));
+    return pow(c.rgb, vec3(1.0 / 1.6));
 }
 
 // Note: alpha-channel represents occlusion/visibility where 0 is occluded and 1 is non-occluded

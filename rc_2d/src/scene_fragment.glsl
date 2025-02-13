@@ -32,4 +32,5 @@ void main() {
     else {
         color = vec4(0.0);
     }
+    color.rgb *= 1.2;
 }

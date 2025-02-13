@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+
 use microglut::{
     fbo::{bind_output_fbo, bind_texture_fbo},
-    glam::{Vec2, Vec3},
+    glam::{Mat4, Vec2, Vec3},
     glow::{
-        Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER,
-        COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT, STATIC_DRAW, TEXTURE0, TEXTURE1,
-        TEXTURE2, TRIANGLES,
+        Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, PixelUnpackData,
+        ARRAY_BUFFER, CLAMP_TO_EDGE, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT,
+        FLOAT_MAT4, LINEAR, RGBA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D_ARRAY,
+        TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES,
+        UNSIGNED_BYTE,
     },
     load_shaders, MicroGLUT, Window, FBO,
 };
@@ -26,6 +30,7 @@ struct App {
     quad_vao: NativeVertexArray,
     quad_vertex_buffer: NativeBuffer,
     quad_texcoord_buffer: NativeBuffer,
+    instance_mat_buffer: NativeBuffer,
     scene_program: NativeProgram,
     rc_program: NativeProgram,
     jfa_seed_program: NativeProgram,
@@ -42,6 +47,40 @@ struct App {
 }
 
 impl App {
+    fn load_scene(&mut self, gl: &Context) {
+        unsafe {
+            let tex_array = gl.create_texture().unwrap();
+            let mut textures = vec![];
+            textures.extend_from_slice(include_bytes!(
+                "../../microglut/examples/16-simple-06-textured-quad/maskros512.tga"
+            ));
+            let tex_names = HashMap::from([("circle", 0)]);
+            gl.bind_texture(TEXTURE_2D_ARRAY, Some(tex_array));
+            gl.tex_storage_3d(TEXTURE_2D_ARRAY, 1, RGBA, 800, 800, tex_names.len() as _);
+
+            gl.tex_sub_image_3d(
+                TEXTURE_2D_ARRAY,
+                0,
+                0,
+                0,
+                0,
+                800,
+                800,
+                tex_names.len() as _,
+                RGBA,
+                UNSIGNED_BYTE,
+                PixelUnpackData::Slice(&textures[..]),
+            );
+
+            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_MIN_FILTER, LINEAR as _);
+            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_MAG_FILTER, LINEAR as _);
+            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_WRAP_S, CLAMP_TO_EDGE as _);
+            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_WRAP_T, CLAMP_TO_EDGE as _);
+
+            let sprites = vec![Sprite::new(texture, position, scale, rotation)];
+        }
+    }
+
     fn draw_scene(&mut self, gl: &Context) {
         unsafe {
             bind_output_fbo(gl, Some(&self.scene), self.screen_width, self.screen_height);
@@ -50,7 +89,33 @@ impl App {
             gl.clear_color(0.0, 0.0, 0.0, 0.0);
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
 
-            self.draw_screen_quad(gl, self.scene_program);
+            let mats: Vec<Mat4> = self.sprites.iter().map(|s| s.model_to_world).collect();
+
+            gl.bind_vertex_array(Some(self.quad_vao));
+            gl.bind_buffer(ARRAY_BUFFER, Some(self.quad_vertex_buffer));
+            let pos_loc = gl
+                .get_attrib_location(self.scene_program, "position")
+                .unwrap();
+            gl.vertex_attrib_pointer_f32(pos_loc, 3, FLOAT, false, 0, 0);
+            gl.enable_vertex_attrib_array(pos_loc);
+
+            gl.bind_buffer(ARRAY_BUFFER, Some(self.quad_texcoord_buffer));
+            if let Some(texcoord_loc) = gl.get_attrib_location(self.scene_program, "v_tex_coord") {
+                gl.vertex_attrib_pointer_f32(texcoord_loc, 2, FLOAT, false, 0, 0);
+                gl.enable_vertex_attrib_array(texcoord_loc);
+            }
+
+            gl.bind_buffer(ARRAY_BUFFER, Some(self.instance_mat_buffer));
+            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&mats), STATIC_DRAW);
+            let loc = gl
+                .get_attrib_location(self.scene_program, "model_to_world")
+                .unwrap();
+            gl.vertex_attrib_pointer_f32(loc, 1, FLOAT_MAT4, false, 0, 0);
+            gl.vertex_attrib_divisor(loc, 1);
+            gl.enable_vertex_attrib_array(loc);
+
+            //TODO: bind/activate 2d array texture + vbo for array texture layer
+            gl.draw_arrays_instanced(TRIANGLES, 0, 3, self.sprites.len() as _);
         }
     }
 
@@ -281,6 +346,9 @@ impl MicroGLUT for App {
             gl.bind_buffer(ARRAY_BUFFER, Some(quad_tex_vbo));
             gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&texcoords), STATIC_DRAW);
 
+            let instance_mat_vbo = gl.create_buffer().unwrap();
+            gl.bind_buffer(ARRAY_BUFFER, Some(instance_mat_vbo));
+
             let scene_program = load_shaders(
                 gl,
                 include_str!("vertex.glsl"),
@@ -324,6 +392,7 @@ impl MicroGLUT for App {
                 quad_vao,
                 quad_vertex_buffer: quad_vbo,
                 quad_texcoord_buffer: quad_tex_vbo,
+                instance_mat_buffer: instance_mat_vbo,
                 scene_program,
                 rc_program,
                 jfa_seed_program,
