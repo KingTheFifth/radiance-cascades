@@ -2,7 +2,7 @@ use microglut::glam::{Mat4, Quat, Vec2, Vec3};
 
 pub struct Sprite {
     position: Vec2,
-    texture_index: u32,
+    pub texture_index: u32,
     pub model_to_world: Mat4,
 }
 
@@ -12,9 +12,9 @@ impl Sprite {
             position: position,
             texture_index: texture_index,
             model_to_world: Mat4::from_scale_rotation_translation(
-                Vec3::new(scale.x, 0.0, scale.y),
-                Quat::from_rotation_y(rotation),
-                Vec3::new(position.x, 0.0, position.y),
+                Vec3::new(scale.x, scale.y, 1.0),
+                Quat::from_rotation_z(rotation),
+                Vec3::new(position.x, position.y, 0.0),
             ),
         }
     }

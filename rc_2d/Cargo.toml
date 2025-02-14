@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 microglut = { path = "../microglut" }
 bytemuck = { version = "1.19.0", features = ["derive"] }
-
+stb_image = "0.3.0"
+load_file = "1.0.1"

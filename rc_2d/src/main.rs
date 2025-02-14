@@ -1,12 +1,16 @@
+#[macro_use]
+extern crate load_file;
+
 use std::collections::HashMap;
 
 use microglut::{
     fbo::{bind_output_fbo, bind_texture_fbo},
-    glam::{Mat4, Vec2, Vec3},
+    glam::{Mat4, Vec2, Vec3, Vec4},
     glow::{
-        Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, PixelUnpackData,
-        ARRAY_BUFFER, CLAMP_TO_EDGE, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT,
-        FLOAT_MAT4, LINEAR, RGBA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D_ARRAY,
+        Context, HasContext, NativeBuffer, NativeProgram, NativeTexture, NativeVertexArray,
+        PixelUnpackData, ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT,
+        DEPTH_TEST, FLOAT, FLOAT_MAT4, INT, LINEAR, ONE_MINUS_SRC_ALPHA, RGBA, SRC_ALPHA,
+        STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D, TEXTURE_2D_ARRAY,
         TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES,
         UNSIGNED_BYTE,
     },
@@ -30,6 +34,7 @@ struct App {
     quad_vao: NativeVertexArray,
     quad_vertex_buffer: NativeBuffer,
     quad_texcoord_buffer: NativeBuffer,
+    quad_tex_id_buffer: NativeBuffer,
     instance_mat_buffer: NativeBuffer,
     scene_program: NativeProgram,
     rc_program: NativeProgram,
@@ -43,53 +48,20 @@ struct App {
     curr_cascade: FBO,
     screen_width: i32,
     screen_height: i32,
+    texture_array: NativeTexture,
     sprites: Vec<Sprite>,
 }
 
 impl App {
-    fn load_scene(&mut self, gl: &Context) {
-        unsafe {
-            let tex_array = gl.create_texture().unwrap();
-            let mut textures = vec![];
-            textures.extend_from_slice(include_bytes!(
-                "../../microglut/examples/16-simple-06-textured-quad/maskros512.tga"
-            ));
-            let tex_names = HashMap::from([("circle", 0)]);
-            gl.bind_texture(TEXTURE_2D_ARRAY, Some(tex_array));
-            gl.tex_storage_3d(TEXTURE_2D_ARRAY, 1, RGBA, 800, 800, tex_names.len() as _);
-
-            gl.tex_sub_image_3d(
-                TEXTURE_2D_ARRAY,
-                0,
-                0,
-                0,
-                0,
-                800,
-                800,
-                tex_names.len() as _,
-                RGBA,
-                UNSIGNED_BYTE,
-                PixelUnpackData::Slice(&textures[..]),
-            );
-
-            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_MIN_FILTER, LINEAR as _);
-            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_MAG_FILTER, LINEAR as _);
-            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_WRAP_S, CLAMP_TO_EDGE as _);
-            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_WRAP_T, CLAMP_TO_EDGE as _);
-
-            let sprites = vec![Sprite::new(texture, position, scale, rotation)];
-        }
-    }
-
     fn draw_scene(&mut self, gl: &Context) {
         unsafe {
             bind_output_fbo(gl, Some(&self.scene), self.screen_width, self.screen_height);
             gl.use_program(Some(self.scene_program));
+            gl.enable(BLEND);
+            gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
 
             gl.clear_color(0.0, 0.0, 0.0, 0.0);
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-
-            let mats: Vec<Mat4> = self.sprites.iter().map(|s| s.model_to_world).collect();
 
             gl.bind_vertex_array(Some(self.quad_vao));
             gl.bind_buffer(ARRAY_BUFFER, Some(self.quad_vertex_buffer));
@@ -105,17 +77,71 @@ impl App {
                 gl.enable_vertex_attrib_array(texcoord_loc);
             }
 
+            let mats: Vec<Mat4> = self.sprites.iter().map(|s| s.model_to_world).collect();
+            let vec4_size = size_of::<Vec4>() as i32;
             gl.bind_buffer(ARRAY_BUFFER, Some(self.instance_mat_buffer));
             gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&mats), STATIC_DRAW);
-            let loc = gl
+            let mat_loc = gl
                 .get_attrib_location(self.scene_program, "model_to_world")
                 .unwrap();
-            gl.vertex_attrib_pointer_f32(loc, 1, FLOAT_MAT4, false, 0, 0);
-            gl.vertex_attrib_divisor(loc, 1);
-            gl.enable_vertex_attrib_array(loc);
+            gl.vertex_attrib_pointer_f32(mat_loc, 4, FLOAT, false, 4 * vec4_size, 0);
+            gl.enable_vertex_attrib_array(mat_loc);
+            gl.vertex_attrib_pointer_f32(
+                mat_loc + 1,
+                4,
+                FLOAT,
+                false,
+                4 * vec4_size,
+                1 * vec4_size,
+            );
+            gl.enable_vertex_attrib_array(mat_loc + 1);
+            gl.vertex_attrib_pointer_f32(
+                mat_loc + 2,
+                4,
+                FLOAT,
+                false,
+                4 * vec4_size,
+                2 * vec4_size,
+            );
+            gl.enable_vertex_attrib_array(mat_loc + 2);
+            gl.vertex_attrib_pointer_f32(
+                mat_loc + 3,
+                4,
+                FLOAT,
+                false,
+                4 * vec4_size,
+                3 * vec4_size,
+            );
+            gl.enable_vertex_attrib_array(mat_loc + 3);
+            gl.vertex_attrib_divisor(mat_loc, 1);
+            gl.vertex_attrib_divisor(mat_loc + 1, 1);
+            gl.vertex_attrib_divisor(mat_loc + 2, 1);
+            gl.vertex_attrib_divisor(mat_loc + 3, 1);
 
-            //TODO: bind/activate 2d array texture + vbo for array texture layer
+            let tex_ids: Vec<f32> = self
+                .sprites
+                .iter()
+                .map(|s| s.texture_index as f32)
+                .collect();
+            gl.bind_buffer(ARRAY_BUFFER, Some(self.quad_tex_id_buffer));
+            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&tex_ids), STATIC_DRAW);
+            if let Some(tex_id_loc) = gl.get_attrib_location(self.scene_program, "v_texture_index")
+            {
+                gl.vertex_attrib_pointer_f32(tex_id_loc, 1, FLOAT, false, 0, 0);
+                gl.vertex_attrib_divisor(tex_id_loc, 1);
+                gl.enable_vertex_attrib_array(tex_id_loc);
+            }
+
+            gl.active_texture(TEXTURE0);
+            gl.bind_texture(TEXTURE_2D_ARRAY, Some(self.texture_array));
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.scene_program, "tex_array")
+                    .as_ref(),
+                0,
+            );
+
             gl.draw_arrays_instanced(TRIANGLES, 0, 3, self.sprites.len() as _);
+            gl.disable(BLEND);
         }
     }
 
@@ -334,7 +360,7 @@ impl MicroGLUT for App {
         let texcoords = [Vec2::ZERO, Vec2::new(2.0, 0.0), Vec2::new(0.0, 2.0)];
 
         unsafe {
-            gl.clear_color(0.2, 0.2, 0.5, 0.0);
+            gl.clear_color(0.0, 0.0, 0.0, 0.0);
             let quad_vao = gl.create_vertex_array().unwrap();
             gl.bind_vertex_array(Some(quad_vao));
 
@@ -349,9 +375,11 @@ impl MicroGLUT for App {
             let instance_mat_vbo = gl.create_buffer().unwrap();
             gl.bind_buffer(ARRAY_BUFFER, Some(instance_mat_vbo));
 
+            let tex_id_vbo = gl.create_buffer().unwrap();
+
             let scene_program = load_shaders(
                 gl,
-                include_str!("vertex.glsl"),
+                include_str!("scene_vertex.glsl"),
                 include_str!("scene_fragment.glsl"),
             );
 
@@ -386,13 +414,95 @@ impl MicroGLUT for App {
             let prev_cascade = FBO::init(gl, screen_width, screen_height, false);
             let curr_cascade = FBO::init(gl, screen_width, screen_height, false);
 
-            let sprites = vec![];
+            let textures = vec![
+                load_bytes!("textures/RainTexture1.png"),
+                load_bytes!("textures/SnowTexture2.png"),
+                load_bytes!("textures/black.png"),
+                load_bytes!("textures/red_circle.png"),
+                load_bytes!("textures/white_circle.png"),
+            ];
+            let tex_names = HashMap::from([
+                ("rain", 0),
+                ("snow", 1),
+                ("wall", 2),
+                ("red_circle", 3),
+                ("white_circle", 4),
+            ]);
+
+            let texture_width = 200;
+            let texture_height = 200;
+            let texture_array = gl.create_texture().unwrap();
+            gl.bind_texture(TEXTURE_2D_ARRAY, Some(texture_array));
+            gl.tex_storage_3d(
+                TEXTURE_2D_ARRAY,
+                1,
+                RGBA,
+                texture_width,
+                texture_height,
+                textures.len() as _,
+            );
+            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_MIN_FILTER, LINEAR as _);
+            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_MAG_FILTER, LINEAR as _);
+            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_WRAP_S, CLAMP_TO_EDGE as _);
+            gl.tex_parameter_i32(TEXTURE_2D_ARRAY, TEXTURE_WRAP_T, CLAMP_TO_EDGE as _);
+
+            let mut img = vec![];
+            use stb_image::image::{load_from_memory, LoadResult};
+            for i in 0..textures.len() {
+                let image = match load_from_memory(textures[i]) {
+                    LoadResult::Error(e) => panic!("{}", e),
+                    LoadResult::ImageU8(image) => image,
+                    LoadResult::ImageF32(_image) => todo!(),
+                };
+                img.extend_from_slice(&image.data);
+            }
+
+            gl.tex_image_3d(
+                TEXTURE_2D_ARRAY,
+                0,
+                RGBA as _,
+                texture_width,
+                texture_height,
+                textures.len() as _,
+                0,
+                RGBA,
+                UNSIGNED_BYTE,
+                Some(&img),
+            );
+
+            let sprites = vec![
+                Sprite::new(
+                    *tex_names.get("rain").unwrap(),
+                    Vec2::ZERO,
+                    Vec2::ONE * 0.03,
+                    0.0,
+                ),
+                Sprite::new(
+                    *tex_names.get("snow").unwrap(),
+                    Vec2::new(0.3, 0.3),
+                    Vec2::ONE * 0.3,
+                    0.25,
+                ),
+                Sprite::new(
+                    *tex_names.get("wall").unwrap(),
+                    Vec2::new(0.0, 0.3),
+                    Vec2::ONE * 0.03,
+                    0.0,
+                ),
+                Sprite::new(
+                    *tex_names.get("red_circle").unwrap(),
+                    Vec2::new(-0.3, -0.3),
+                    Vec2::ONE * 0.07,
+                    0.0,
+                ),
+            ];
 
             App {
                 quad_vao,
                 quad_vertex_buffer: quad_vbo,
                 quad_texcoord_buffer: quad_tex_vbo,
                 instance_mat_buffer: instance_mat_vbo,
+                quad_tex_id_buffer: tex_id_vbo,
                 scene_program,
                 rc_program,
                 jfa_seed_program,
@@ -405,6 +515,7 @@ impl MicroGLUT for App {
                 curr_cascade,
                 screen_width,
                 screen_height,
+                texture_array,
                 sprites,
             }
         }

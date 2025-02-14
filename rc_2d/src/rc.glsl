@@ -3,7 +3,7 @@
 in vec2 tex_coord;
 out vec4 color;
 
-const float EPSILON = 0.0001;
+const float EPSILON = 0.00001;
 
 // RC params ---------------------------------------------
 uniform sampler2D scene;
@@ -107,15 +107,6 @@ void main(void) {
     if (cascade_index == 0.0 && true) {
         color = vec4(srgb_to_linear(color.rgb), 1.0);
     }
-    //color = texture(dist_field, tex_coord);
-    //color = vec4(vec3(V2F16(texture(dist_field, tex_coord).rg)), 1.0);
-    //color = texture(scene, tex_coord);
-    // if (cascade_index >= num_cascades - 1.0) {
-    //     //color = vec4(dir_block_index / angular_res_sqr, 0.0, 1.0);
-    //     color = vec4(dir_block_index * (1.0 / dir_block_size), 0.0, 1.0);
-    //     //color = vec4(probe_pos / (screen_dimensions / dir_block_size), 0.0, 1.0);
-    // }
-    // else {
-    //     color = texture(prev_cascade, tex_coord);
-    // }
+
+    //color = vec4(vec3(V2F16(texture(dist_field, tex_coord).rg)) * 10.0, 1.0);
 }
