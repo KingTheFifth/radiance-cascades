@@ -2,6 +2,8 @@
 
 in vec2 tex_coord;
 in float texture_index;
+in vec4 albedo;
+in vec4 emissive;
 uniform sampler2DArray tex_array;
 out vec4 color;
 
