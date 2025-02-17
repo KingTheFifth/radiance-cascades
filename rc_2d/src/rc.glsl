@@ -6,7 +6,8 @@ out vec4 color;
 const float EPSILON = 0.00001;
 
 // RC params ---------------------------------------------
-uniform sampler2D scene;
+uniform sampler2D scene_albedo;
+uniform sampler2D scene_emissive;
 uniform sampler2D dist_field;
 uniform sampler2D prev_cascade;
 uniform vec2 screen_dimensions;
@@ -14,9 +15,9 @@ uniform vec2 cascade_dimensions;
 uniform float num_cascades;
 uniform float cascade_index;          // Current cascade
 
-// These get scaled for each cascade: 0.25x density and 4x rays for each cascade in comparison to previous one
+// These get scaled for each cascade: 0.5x density and 4x rays for each cascade in comparison to previous one
 // (Other factors are possible but this keeps the cascade dimensions equal for all cacades)
-uniform float c0_probe_density;     // As power of 2
+uniform float c0_probe_spacing;     // As power of 2
 uniform float c0_interval_length;
 // -------------------------------------------------------
 
@@ -54,7 +55,7 @@ vec4 raymarch(vec2 origin, vec2 direction, float max_length) {
 
         // Ray hit => Return the colour of the hit part of the scene
         if (df <= EPSILON) {
-            return vec4(linear_to_srgb(texture(scene, ray).rgb), 0.0);
+            return vec4(linear_to_srgb(texture(scene_emissive, ray).rgb), 0.0);
         }
     }
 
@@ -62,51 +63,59 @@ vec4 raymarch(vec2 origin, vec2 direction, float max_length) {
     return vec4(0.0, 0.0, 0.0, 1.0); 
 }
 
-vec4 merge(vec4 radiance, float neighbour_index, vec2 dir_block_size, vec2 dir_block_index) {
+vec4 merge(vec4 radiance, float dir_index, vec2 dir_block_size, vec2 coord_within_block) {
     // Do not merge with the prev cascade if the ray has hit an occluder or we are at the first (highest) cascade
    if (radiance.a == 0.0 || cascade_index >= num_cascades - 1.0) {
         return vec4(radiance.rgb, 1.0 - radiance.a);
    }
 
-   float prev_angular = pow(2.0, floor(cascade_index + 1.0));   // TODO: uniform
-   vec2 prev_dir_block_size = floor(cascade_dimensions / prev_angular); //TODO: uniform
-   vec2 interpolation_point = vec2(mod(neighbour_index, prev_angular), floor(neighbour_index / prev_angular)) * prev_dir_block_size;
-   interpolation_point += clamp(0.5 * dir_block_index + 0.25, vec2(0.5), prev_dir_block_size - 0.5);
+   float prev_num_dirs = pow(2.0, floor(cascade_index + 1.0));   // TODO: uniform
+   vec2 prev_dir_block_size = floor(cascade_dimensions / prev_num_dirs); //TODO: uniform
+
+   vec2 interpolation_point = vec2(mod(dir_index, prev_num_dirs), floor(dir_index / prev_num_dirs)) * prev_dir_block_size;
+   interpolation_point += clamp(0.5 * coord_within_block + 0.25, vec2(0.5), prev_dir_block_size - 0.5);
+
    return radiance + texture(prev_cascade, interpolation_point * (1.0 / cascade_dimensions));
 }
 
 void main(void) {
     const vec2 coord = floor(tex_coord * cascade_dimensions);
-    const float angular_res_sqr = pow(2.0, floor(cascade_index));    //"angular" (number of rays), TODO: turn into uniform
+    const float num_dirs_sqrt = pow(2.0, cascade_index);    //number of rays, TODO: turn into uniform
 
-    const vec2 dir_block_size = floor(cascade_dimensions / angular_res_sqr);  //"extent", TODO: uniform
-    const vec2 dir_block_index = mod(coord, dir_block_size); //"probe.xy"
-    const vec2 probe_pos = floor(coord / dir_block_size); //"probe.zw"
+    // Partition the output texture into uniform blocks, one for each ray direction,
+    // and calculate which block this fragment belongs to
+    const vec2 dir_block_size = floor(cascade_dimensions / num_dirs_sqrt);  //TODO: uniform
+    const vec2 coord_within_block = mod(coord, dir_block_size);
+    const vec2 dir_block_index = floor(coord / dir_block_size);
 
-    const float ray_offset = c0_interval_length * ((1.0 - pow(4.0, cascade_index)) / (1.0 - 4.0));  //"interval", Some magic math, TODO: uniform
-    const vec2 probe_spacing = vec2(c0_probe_density * pow(2.0, cascade_index)); // "linear", TODO: uniform
-    const float interval_length = c0_interval_length * pow(4.0, cascade_index); //"limit", TODO: uniform
+    // Probe spacing doubles and ray interval length quadruples every cascade
+    const vec2 probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index)); //TODO: uniform
+    const float interval_length = c0_interval_length * pow(4.0, cascade_index); //TODO: uniform
+    const float interval_start = c0_interval_length * ((1.0 - pow(4.0, cascade_index)) / (1.0 - 4.0));  //Geometric sum
 
-    const vec2 origin = (dir_block_index + 0.5) * probe_spacing;
-    const float angular = angular_res_sqr * angular_res_sqr * 4.0;  // TODO: uniform
-    const float index = (probe_pos.x + (probe_pos.y * angular_res_sqr)) * 4.0;
+    // Calculate probe position and ray direction
+    const vec2 origin = (coord_within_block + 0.5) * probe_spacing;
+    const float num_dirs = num_dirs_sqrt * num_dirs_sqrt * 4.0;  // TODO: uniform
+    const float dir_index = (dir_block_index.x + (dir_block_index.y * num_dirs_sqrt)) * 4.0;
 
+    // Cast 4 rays and average together into one ray to save memory and calculations
     color = vec4(0.0);
     for (float i = 0.0; i < 4.0; i++) {
-        const float preavg_ray_index = index + float(i);  //"preavg"
-        const float ray_angle = (preavg_ray_index + 0.5) * (2.0 * 3.14159266 / angular);   //"theta"
+        const float preavg_dir_index = dir_index + float(i);  //"preavg"
+        const float ray_angle = (preavg_dir_index + 0.5) * (2.0 * 3.14159266 / num_dirs);   //"theta"
 
         const vec2 ray_dir = vec2(cos(ray_angle), -sin(ray_angle));   //"delta"
-        const vec2 ray_origin = origin + ray_dir * ray_offset;
+        const vec2 ray_origin = origin + ray_dir * interval_start;
 
         vec4 radiance = raymarch(ray_origin, ray_dir, interval_length);
-        color += merge(radiance, preavg_ray_index, dir_block_size, dir_block_index) * 0.25;
+
+        // Merge the previous cascade (of higher index) into this one
+        color += merge(radiance, preavg_dir_index, dir_block_size, coord_within_block) * 0.25;
     }
 
-    // This is the colour that should be outputted to screen
-    if (cascade_index == 0.0 && true) {
-        color = vec4(srgb_to_linear(color.rgb), 1.0);
+    // After merging all higher cascades into cascade 0,
+    // cascade 0 contains the final colour to output for this fragment
+    if (cascade_index == 0.0) {
+        color = texture(scene_albedo, tex_coord) + vec4(srgb_to_linear(color.rgb), 1.0);
     }
-
-    //color = vec4(vec3(V2F16(texture(dist_field, tex_coord).rg)) * 10.0, 1.0);
 }

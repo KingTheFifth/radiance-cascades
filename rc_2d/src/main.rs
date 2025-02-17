@@ -3,15 +3,16 @@ extern crate load_file;
 
 use std::collections::HashMap;
 
+use fbo::SceneFBO;
 use microglut::{
     delta_time,
     fbo::{bind_output_fbo, bind_texture_fbo},
     glam::{Mat4, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, NativeTexture, NativeVertexArray,
-        ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, FLOAT, LINEAR,
-        ONE_MINUS_SRC_ALPHA, RGBA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0,
-        TEXTURE1, TEXTURE2, TEXTURE_2D_ARRAY, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER,
+        ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, FLOAT, FRAMEBUFFER,
+        LINEAR, ONE_MINUS_SRC_ALPHA, RGBA, RGBA32F, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW,
+        TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D_ARRAY, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER,
         TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES, UNSIGNED_BYTE,
     },
     load_shaders, MicroGLUT, Window, FBO,
@@ -27,7 +28,32 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
     eprintln!("[{severity}] {message}");
 }
 
+mod fbo;
 mod sprite;
+
+/// Rounds up a number to a power of n.
+/// # Examples
+/// ```
+/// let x = 2.5;
+/// let y = 4.0;
+/// assert!(ceil_to_power_of_n(x, 2.0) == 4.0)
+/// assert!(ceil_to_power_of_n(x, 2.0) == ceil_to_power_of_n(y, 2.0))
+/// ```
+fn ceil_to_power_of_n(number: f32, n: f32) -> f32 {
+    n.powf(number.log(n).ceil())
+}
+
+/// Rounds up a numver to a multiple of n.
+/// # Examples
+/// ```
+/// let x = 5.0;
+/// let y = -4.0;
+/// assert!(ceil_to_multiple_of_n(x, 4.0) == 8.0)
+/// assert!(ceil_to_multiple_of_n(y, 4.0) == -4.0)
+/// ```
+fn ceil_to_multiple_of_n(number: f32, n: f32) -> f32 {
+    (number / n).ceil() * n
+}
 
 struct App {
     //TODO: the "quad" is actually a triangle that covers the screen. Rename it accordingly?
@@ -42,13 +68,17 @@ struct App {
     sdf_program: NativeProgram,
     fbo_program: NativeProgram,
 
-    scene: FBO,
+    scene: SceneFBO,
     dist_field: FBO,
     prev_cascade: FBO,
     curr_cascade: FBO,
 
     screen_width: i32,
     screen_height: i32,
+    cascade_width: f32,
+    cascade_height: f32,
+    probe_spacing: f32,
+    interval_length: f32,
 
     texture_array: NativeTexture,
     sprites: Vec<Sprite>,
@@ -58,7 +88,7 @@ struct App {
 impl App {
     fn draw_scene(&mut self, gl: &Context) {
         unsafe {
-            bind_output_fbo(gl, Some(&self.scene), self.screen_width, self.screen_height);
+            gl.bind_framebuffer(FRAMEBUFFER, Some(self.scene.fb));
             gl.use_program(Some(self.scene_program));
             gl.enable(BLEND);
             gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
@@ -133,7 +163,7 @@ impl App {
             // Seed the jump flood algorithm
             let mut tmp = FBO::init(gl, self.screen_width, self.screen_height, false);
             gl.use_program(Some(self.jfa_seed_program));
-            bind_texture_fbo(gl, &self.scene, TEXTURE0);
+            self.scene.bind_as_textures(gl, TEXTURE0);
             bind_output_fbo(
                 gl,
                 Some(&self.dist_field),
@@ -226,25 +256,27 @@ impl App {
         )))
         .log(4.0)
         .ceil() as i32;
-        let probe_density = 1.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
-        let interval_length = Vec2::ZERO.distance(Vec2::new(probe_density, probe_density)) * 0.5;
-        let probe_density_adjusted = (2.0_f32).powf((probe_density).log(2.0).ceil());
-        let interval_length_adjusted = (interval_length / 2.0_f32).ceil() * 2.0;
         unsafe {
             for n in (0..num_cascades).rev() {
                 gl.use_program(Some(self.rc_program));
                 bind_texture_fbo(gl, &self.prev_cascade, TEXTURE0);
-                bind_texture_fbo(gl, &self.dist_field, TEXTURE2);
-                bind_texture_fbo(gl, &self.scene, TEXTURE1);
+                bind_texture_fbo(gl, &self.dist_field, TEXTURE1);
+                self.scene.bind_as_textures(gl, TEXTURE2);
 
                 gl.uniform_1_i32(
-                    gl.get_uniform_location(self.rc_program, "scene").as_ref(),
-                    1,
+                    gl.get_uniform_location(self.rc_program, "scene_emissive")
+                        .as_ref(),
+                    3,
+                );
+                gl.uniform_1_i32(
+                    gl.get_uniform_location(self.rc_program, "scene_albedo")
+                        .as_ref(),
+                    2,
                 );
                 gl.uniform_1_i32(
                     gl.get_uniform_location(self.rc_program, "dist_field")
                         .as_ref(),
-                    2,
+                    1,
                 );
                 gl.uniform_1_i32(
                     gl.get_uniform_location(self.rc_program, "prev_cascade")
@@ -260,8 +292,8 @@ impl App {
                 gl.uniform_2_f32(
                     gl.get_uniform_location(self.rc_program, "cascade_dimensions")
                         .as_ref(),
-                    self.screen_width as _,
-                    self.screen_height as _,
+                    self.cascade_width as _,
+                    self.cascade_height as _,
                 );
                 gl.uniform_1_f32(
                     gl.get_uniform_location(self.rc_program, "num_cascades")
@@ -269,14 +301,14 @@ impl App {
                     num_cascades as _,
                 );
                 gl.uniform_1_f32(
-                    gl.get_uniform_location(self.rc_program, "c0_probe_density")
+                    gl.get_uniform_location(self.rc_program, "c0_probe_spacing")
                         .as_ref(),
-                    probe_density_adjusted,
+                    self.probe_spacing,
                 );
                 gl.uniform_1_f32(
                     gl.get_uniform_location(self.rc_program, "c0_interval_length")
                         .as_ref(),
-                    interval_length_adjusted,
+                    self.interval_length,
                 );
 
                 gl.uniform_1_f32(
@@ -348,26 +380,37 @@ impl MicroGLUT for App {
                 Vec2::ZERO,
                 Vec2::ONE * 0.03,
                 0.0,
+                Vec4::new(0.0, 0.0, 1.0, 1.0),
             ),
             Sprite::new(
                 *tex_names.get("snow").unwrap(),
                 Vec2::new(0.3, 0.3),
                 Vec2::ONE * 0.3,
                 0.25,
+                Vec4::ONE,
             ),
             Sprite::new(
                 *tex_names.get("wall").unwrap(),
                 Vec2::new(0.0, 0.3),
                 Vec2::ONE * 0.03,
                 0.0,
+                Vec4::ZERO,
             ),
             Sprite::new(
                 *tex_names.get("red_circle").unwrap(),
                 Vec2::new(-0.3, -0.3),
                 Vec2::ONE * 0.07,
                 0.0,
+                Vec4::new(0.0, 0.0, 0.0, 1.0),
             ),
         ];
+
+        let probe_spacing = 1.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
+        let interval_length = Vec2::ZERO.distance(Vec2::new(probe_spacing, probe_spacing)) * 0.5;
+        let probe_spacing_adjusted = ceil_to_power_of_n(probe_spacing, 2.0);
+        let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
+        let cascade_width = (screen_width as f32) / probe_spacing_adjusted;
+        let cascade_height = (screen_height as f32) / probe_spacing_adjusted;
 
         unsafe {
             let quad_vao = gl.create_vertex_array().unwrap();
@@ -410,9 +453,9 @@ impl MicroGLUT for App {
             );
 
             let dist_field = FBO::init(gl, screen_width, screen_height, false);
-            let scene = FBO::init(gl, screen_width, screen_height, false);
-            let prev_cascade = FBO::init(gl, screen_width, screen_height, false);
-            let curr_cascade = FBO::init(gl, screen_width, screen_height, false);
+            let scene = SceneFBO::init(gl, screen_width, screen_height, 2);
+            let prev_cascade = FBO::init(gl, cascade_width as _, cascade_height as _, false);
+            let curr_cascade = FBO::init(gl, cascade_width as _, cascade_height as _, false);
 
             // Load sprite textures into a texture array
             let texture_array = gl.create_texture().unwrap();
@@ -432,7 +475,7 @@ impl MicroGLUT for App {
             gl.tex_image_3d(
                 TEXTURE_2D_ARRAY,
                 0,
-                RGBA as _,
+                RGBA32F as _,
                 texture_width,
                 texture_height,
                 textures.len() as _,
@@ -451,6 +494,8 @@ impl MicroGLUT for App {
             );
             gl.bind_buffer_base(SHADER_STORAGE_BUFFER, 0, Some(sprite_ssbo));
 
+            gl.viewport(0, 0, screen_width, screen_height);
+
             App {
                 quad_vao,
                 quad_vertex_buffer: quad_vbo,
@@ -467,6 +512,10 @@ impl MicroGLUT for App {
                 curr_cascade,
                 screen_width,
                 screen_height,
+                cascade_width,
+                cascade_height,
+                probe_spacing: probe_spacing_adjusted,
+                interval_length: interval_length_adjusted,
                 texture_array,
                 sprites,
                 sprite_ssbo,

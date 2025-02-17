@@ -12,7 +12,13 @@ pub struct Sprite {
 }
 
 impl Sprite {
-    pub fn new(texture_index: f32, position: Vec2, scale: Vec2, rotation: f32) -> Sprite {
+    pub fn new(
+        texture_index: f32,
+        position: Vec2,
+        scale: Vec2,
+        rotation: f32,
+        emissive: Vec4,
+    ) -> Sprite {
         Sprite {
             texture_index: texture_index,
             model_to_world: Mat4::from_scale_rotation_translation(
@@ -21,7 +27,7 @@ impl Sprite {
                 Vec3::new(position.x, position.y, 0.0),
             ),
             albedo: Vec4::ZERO,
-            emissive: Vec4::ONE,
+            emissive,
             _padding: Default::default(),
         }
     }
