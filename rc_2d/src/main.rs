@@ -405,7 +405,7 @@ impl MicroGLUT for App {
             ),
         ];
 
-        let probe_spacing = 1.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
+        let probe_spacing = 2.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
         let interval_length = Vec2::ZERO.distance(Vec2::new(probe_spacing, probe_spacing)) * 0.5;
         let probe_spacing_adjusted = ceil_to_power_of_n(probe_spacing, 2.0);
         let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
@@ -430,7 +430,11 @@ impl MicroGLUT for App {
                 include_str!("scene_vertex.glsl"),
                 include_str!("scene_fragment.glsl"),
             );
-            let rc_program = load_shaders(gl, include_str!("vertex.glsl"), include_str!("rc.glsl"));
+            let rc_program = load_shaders(
+                gl,
+                include_str!("vertex.glsl"),
+                include_str!("rc_bilinear.glsl"),
+            );
             let jfa_seed_program = load_shaders(
                 gl,
                 include_str!("vertex.glsl"),
