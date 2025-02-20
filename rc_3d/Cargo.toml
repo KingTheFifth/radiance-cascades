@@ -1,0 +1,17 @@
+[package]
+name = "rc_3d"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+microglut = { path = "../microglut" }
+bytemuck = { version = "1.19.0", features = ["derive"] }
+stb_image = "0.3.0"
+load_file = "1.0.1"
+tobj = { version = "4.0.2", default-features = false }
+
+[profile.dev.package.rc_3d]
+opt-level = 2
+
+[profile.dev.package.tobj]
+opt-level = 2
