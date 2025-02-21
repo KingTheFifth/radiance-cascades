@@ -151,6 +151,16 @@ impl App {
         let clip_info = Vec3::new(z_near * z_far, z_near - z_far, z_far);
         let perspective_mat = Mat4::perspective_rh(fov, aspect_ratio, -z_near, -z_far);
 
+        let w = self.screen_width as f32;
+        let h = self.screen_height as f32;
+        #[rustfmt::skip]
+        let proj_to_pixel = Mat4::from_cols_array(&[
+            w / 2.0, 0.0, 0.0, 0.0,
+            0.0, h / 2.0, 0.0, 0.0,
+            0.0, 0.0, 0.5, 0.0,
+            w / 2.0, h / 2.0, 0.5, 1.0,
+        ]) * perspective_mat;
+
         let cam_forward = (cam_pos - cam_look_at).normalize();
         let mut cam_up = Vec3::Y;
         let cam_right = cam_up.cross(cam_forward).normalize();
@@ -166,6 +176,9 @@ impl App {
             + 0.5 * (pixel_delta_u + pixel_delta_v);
 
         unsafe {
+            gl.use_program(Some(self.ssrt_program));
+            self.scene.bind_as_textures(gl, TEXTURE0);
+
             gl.uniform_3_f32_slice(
                 gl.get_uniform_location(self.ssrt_program, "pixel_down_left")
                     .as_ref(),
@@ -193,7 +206,7 @@ impl App {
                 gl.get_uniform_location(self.ssrt_program, "project_to_pixel")
                     .as_ref(),
                 false,
-                perspective_mat.as_ref(),
+                proj_to_pixel.as_ref(),
             );
             gl.uniform_1_f32(
                 gl.get_uniform_location(self.ssrt_program, "near_plane_z")
@@ -212,7 +225,8 @@ impl App {
                 clip_info.as_ref(),
             );
 
-            self.scene.bind_as_textures(gl, TEXTURE0);
+            gl.clear_color(0.0, 0.0, 0.0, 0.0);
+            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
             self.draw_screen_quad(gl, self.ssrt_program);
         }
     }

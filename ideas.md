@@ -3,6 +3,12 @@
 - SH = Spherical harmonics
 - Lowes level quadrature, 1 ray/octant
 
+Steps for like 2.5D:
+- https://discord.com/channels/1277053173764460625/1277053574425350224/1324992071156895744
++ Depth aware upscaling
++ Screen space ray marcher (probably naive one firstly)
++ Lastly, RC
+
 About multi-bounce:
 - https://discord.com/channels/1277053173764460625/1277053574425350224/1322445910294138922
 
@@ -31,6 +37,7 @@ SPWI omptimisations:
 - Ray tracing with BVHs
     - Library for building BVHs
         - Radeon Rays
+        - tinybvh https://github.com/jbikker/tinybvh
     - Scary! Will it run in real-time?
     - Might enable things like refraction?
     - Might also straight up enable path tracing to compare with rather than VXGI (or all 3 techniques!)
@@ -40,9 +47,9 @@ SPWI omptimisations:
     - Should run in real-time
 
 ### Random showcases:
-    - https://discord.com/channels/1277053173764460625/1277060980215517195/1281365514467147838
-    - https://discord.com/channels/1277053173764460625/1277060812913115269/1277617378456375434
-    - https://discord.com/channels/1277053173764460625/1277060812913115269/1279768991677681746
+- https://discord.com/channels/1277053173764460625/1277060980215517195/1281365514467147838
+- https://discord.com/channels/1277053173764460625/1277060812913115269/1277617378456375434
+- https://discord.com/channels/1277053173764460625/1277060812913115269/1279768991677681746
 
 ## VXGI
 - Use NVIDIA VXGI SDK + bindings

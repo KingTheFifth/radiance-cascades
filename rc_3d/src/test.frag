@@ -251,12 +251,12 @@ out vec4 color;
 void main() {
     const vec2 pixel_coord = floor(tex_coord * screen_dimensions);
     const vec3 pixel_view_pos = pixel_down_left + pixel_coord.x * pixel_delta_u + pixel_coord.y * pixel_delta_v;
-    const vec3 ray_pos = vec3(0.0);
+    const vec3 ray_pos = vec3(0.0, 0.0, -0.015);
     const vec3 ray_dir = normalize(pixel_view_pos);
 
     const float stride = 1.0;
     const float jitter_fraction = 0.1;
-    const float max_steps = 10.0;
+    const float max_steps = 20.0;
     const float max_dist = 20.0;
 
     vec2 hit_pixel = vec2(0.0);
@@ -280,5 +280,5 @@ void main() {
         hit_point 
     );
 
-    color = vec4(float(did_hit));
+    color = vec4(vec3(float(did_hit)), 1.0);
 }
