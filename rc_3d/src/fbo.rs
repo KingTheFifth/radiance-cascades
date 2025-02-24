@@ -1,8 +1,10 @@
+use core::num;
+
 use microglut::glow::{
-    Context, HasContext, NativeFramebuffer, NativeRenderbuffer, NativeTexture, COLOR_ATTACHMENT0,
-    COLOR_ATTACHMENT1, DEPTH_ATTACHMENT, DEPTH_COMPONENT, DEPTH_COMPONENT24, DEPTH_COMPONENT32,
-    FLOAT, FRAMEBUFFER, LINEAR, RENDERBUFFER, REPEAT, RGBA, RGBA32F, TEXTURE_2D,
-    TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, UNSIGNED_BYTE,
+    Context, HasContext, NativeFramebuffer, NativeTexture, COLOR_ATTACHMENT0, DEPTH_ATTACHMENT,
+    DEPTH_COMPONENT, DEPTH_COMPONENT32, FLOAT, FRAMEBUFFER, LINEAR, RENDERBUFFER, REPEAT, RGBA,
+    RGBA32F, TEXTURE_2D, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
+    UNSIGNED_BYTE,
 };
 
 pub struct SceneFBO {
@@ -11,6 +13,7 @@ pub struct SceneFBO {
     pub fb: NativeFramebuffer,
     pub textures: Vec<NativeTexture>,
     pub depth_texture: NativeTexture,
+    pub hi_z_texture: NativeTexture,
 }
 
 impl SceneFBO {
@@ -57,7 +60,7 @@ impl SceneFBO {
             gl.tex_image_2d(
                 TEXTURE_2D,
                 0,
-                DEPTH_COMPONENT as _,
+                DEPTH_COMPONENT32 as _,
                 width,
                 height,
                 0,
@@ -66,6 +69,26 @@ impl SceneFBO {
                 None,
             );
             gl.framebuffer_texture(FRAMEBUFFER, DEPTH_ATTACHMENT, Some(depth_texture), 0);
+
+            let hi_z_texture = gl.create_texture().unwrap();
+            gl.bind_texture(TEXTURE_2D, Some(hi_z_texture));
+            gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_S, REPEAT as _);
+            gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_T, REPEAT as _);
+            gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR as _);
+            gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR as _);
+            for i in 0..10 {
+                gl.tex_image_2d(
+                    TEXTURE_2D,
+                    i,
+                    RGBA32F as _,
+                    (width as f32 / 2.0_f32.powi(i)) as i32,
+                    (height as f32 / 2.0_f32.powi(i)) as i32,
+                    0,
+                    RGBA,
+                    UNSIGNED_BYTE,
+                    None,
+                );
+            }
 
             let draw_buffers: Vec<u32> = (0..num_textures).map(|i| COLOR_ATTACHMENT0 + i).collect();
             gl.draw_buffers(&draw_buffers);
@@ -80,6 +103,7 @@ impl SceneFBO {
                 fb,
                 textures,
                 depth_texture,
+                hi_z_texture,
             }
         }
     }
