@@ -11,6 +11,13 @@ uniform vec2 prev_level_dimensions;
 layout(location = 0) out vec4 color;
 
 void main() {
+    //vec3 colors[3] = {
+    //    vec3(1.0, 0.0, 0.0),
+    //    vec3(0.0, 1.0, 0.0),
+    //    vec3(0.0, 0.0, 1.0),
+    //};
+    //color = vec4(colors[level], 1.0);
+    //return;
     ivec2 pixel_coord = ivec2(floor(tex_coord * dimensions));
 
     if (level == 0) {

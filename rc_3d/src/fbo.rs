@@ -2,9 +2,9 @@ use core::num;
 
 use microglut::glow::{
     Context, HasContext, NativeFramebuffer, NativeTexture, COLOR_ATTACHMENT0, DEPTH_ATTACHMENT,
-    DEPTH_COMPONENT, DEPTH_COMPONENT32, FLOAT, FRAMEBUFFER, LINEAR, RENDERBUFFER, REPEAT, RGBA,
-    RGBA32F, TEXTURE_2D, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
-    UNSIGNED_BYTE,
+    DEPTH_COMPONENT, DEPTH_COMPONENT32, FLOAT, FRAMEBUFFER, LINEAR, NEAREST,
+    NEAREST_MIPMAP_NEAREST, RENDERBUFFER, REPEAT, RGBA, RGBA32F, TEXTURE_2D, TEXTURE_MAG_FILTER,
+    TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, UNSIGNED_BYTE,
 };
 
 pub struct SceneFBO {
@@ -75,20 +75,19 @@ impl SceneFBO {
             gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_S, REPEAT as _);
             gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_T, REPEAT as _);
             gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR as _);
-            gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MIN_FILTER, LINEAR as _);
-            for i in 0..10 {
-                gl.tex_image_2d(
-                    TEXTURE_2D,
-                    i,
-                    RGBA32F as _,
-                    (width as f32 / 2.0_f32.powi(i)) as i32,
-                    (height as f32 / 2.0_f32.powi(i)) as i32,
-                    0,
-                    RGBA,
-                    UNSIGNED_BYTE,
-                    None,
-                );
-            }
+            gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MIN_FILTER, NEAREST_MIPMAP_NEAREST as _);
+            gl.tex_image_2d(
+                TEXTURE_2D,
+                0,
+                RGBA32F as _,
+                width,
+                height,
+                0,
+                RGBA,
+                UNSIGNED_BYTE,
+                None,
+            );
+            gl.generate_mipmap(TEXTURE_2D);
 
             let draw_buffers: Vec<u32> = (0..num_textures).map(|i| COLOR_ATTACHMENT0 + i).collect();
             gl.draw_buffers(&draw_buffers);
