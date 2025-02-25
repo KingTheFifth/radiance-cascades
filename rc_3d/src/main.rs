@@ -1,22 +1,17 @@
 #[macro_use]
 extern crate load_file;
 
-use std::{collections::HashMap, f32::consts::PI};
+use std::f32::consts::PI;
 
 use fbo::SceneFBO;
 use microglut::{
-    delta_time,
     fbo::{bind_output_fbo, bind_texture_fbo},
     glam::{Mat3, Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
-        Context, HasContext, NativeBuffer, NativeProgram, NativeTexture, NativeVertexArray,
-        ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DEPTH_ATTACHMENT,
-        DEPTH_BUFFER_BIT, DEPTH_COMPONENT, DEPTH_TEST, DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER,
-        LINEAR, NEAREST, NEAREST_MIPMAP_NEAREST, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
-        RENDERBUFFER, REPEAT, RG, RGBA, RGBA32F, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW,
-        TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D, TEXTURE_2D_ARRAY, TEXTURE_BASE_LEVEL,
-        TEXTURE_MAG_FILTER, TEXTURE_MAX_LEVEL, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
-        TRIANGLES, UNSIGNED_BYTE,
+        Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
+        COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT, FRAMEBUFFER,
+        ONE_MINUS_SRC_ALPHA, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D,
+        TEXTURE_MAX_LEVEL, TRIANGLES,
     },
     load_shaders, MicroGLUT, Model, Window, FBO,
 };
@@ -65,7 +60,6 @@ struct App {
     quad_texcoord_buffer: NativeBuffer,
 
     scene_program: NativeProgram,
-    depth_pass_program: NativeProgram,
     depth_program: NativeProgram,
     ssrt_program: NativeProgram,
     rc_program: NativeProgram,
@@ -142,12 +136,14 @@ impl App {
         }
     }
 
-    fn mip_map_depth(&self, gl: &Context) {
+    fn generate_hi_z_buffer(&self, gl: &Context) {
         let start_dims = Vec2::new(self.screen_width as _, self.screen_height as _);
         let max_mip_level = self.screen_width.max(self.screen_height).ilog2() as i32;
         unsafe {
-            // Level 0 separately
+            // Mip-map level 0 separately with the scene depth buffer as input
+            // to properly populate the first level of min & max depth
             gl.use_program(Some(self.depth_program));
+            gl.active_texture(TEXTURE0);
             gl.bind_texture(TEXTURE_2D, Some(self.scene.depth_texture));
             gl.uniform_1_i32(
                 gl.get_uniform_location(self.depth_program, "depth_tex")
@@ -172,24 +168,17 @@ impl App {
             );
             self.draw_screen_quad(gl, self.depth_program);
 
+            // Calculate each mip-level using the previous one as the input
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
             for level in 1..max_mip_level + 1 {
                 let mip_dims = start_dims / 2.0_f32.powi(level);
                 let prev_dims = start_dims / 2.0_f32.powi(level - 1);
 
-                gl.use_program(Some(self.depth_program));
-                gl.bind_framebuffer(FRAMEBUFFER, Some(self.scene.fb));
-                gl.active_texture(TEXTURE0);
                 gl.framebuffer_texture(
                     FRAMEBUFFER,
                     COLOR_ATTACHMENT0,
                     Some(self.scene.hi_z_texture),
                     level,
-                );
-
-                gl.uniform_1_i32(
-                    gl.get_uniform_location(self.depth_program, "depth_tex")
-                        .as_ref(),
-                    0,
                 );
                 gl.uniform_2_f32_slice(
                     gl.get_uniform_location(self.depth_program, "dimensions")
@@ -204,7 +193,7 @@ impl App {
                 gl.uniform_1_i32(
                     gl.get_uniform_location(self.depth_program, "prev_mip_level")
                         .as_ref(),
-                    (level - 1).max(0),
+                    level - 1,
                 );
                 gl.uniform_2_f32_slice(
                     gl.get_uniform_location(self.depth_program, "prev_level_dimensions")
@@ -212,15 +201,17 @@ impl App {
                     prev_dims.as_ref(),
                 );
 
-                gl.viewport(0, 0, mip_dims.x as _, mip_dims.y as _);
-
-                gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
-                //gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_BASE_LEVEL, 0);
+                // Prevent reading the current mip-level as that would be undefined behaviour
                 gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAX_LEVEL, level - 1);
+
+                gl.viewport(0, 0, mip_dims.x as _, mip_dims.y as _);
                 self.draw_screen_quad(gl, self.depth_program);
             }
+
+            // Restore to original value
             gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAX_LEVEL, 1000);
 
+            // Restore the original texture attachment to color attachment 0
             gl.bind_framebuffer(TEXTURE_2D, Some(self.scene.fb));
             gl.framebuffer_texture(
                 FRAMEBUFFER,
@@ -228,119 +219,10 @@ impl App {
                 Some(self.scene.textures[0]),
                 0,
             );
-
-            gl.use_program(Some(self.depth_pass_program));
-            gl.bind_framebuffer(FRAMEBUFFER, None);
-            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-            gl.active_texture(TEXTURE0);
-            gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
-            gl.uniform_1_i32(
-                gl.get_uniform_location(self.depth_pass_program, "tex")
-                    .as_ref(),
-                0,
-            );
-            gl.uniform_1_i32(
-                gl.get_uniform_location(self.depth_pass_program, "lod")
-                    .as_ref(),
-                max_mip_level,
-            );
-            gl.viewport(0, 0, self.screen_width / 1, self.screen_height / 1);
-            self.draw_screen_quad(gl, self.fbo_program);
         }
     }
 
-    fn draw_ssrt(&self, gl: &Context) {
-        let cam_pos = Vec3::ZERO;
-        let cam_look_at = -Vec3::Z;
-        let fov = PI / 2.0;
-        let focus_dist = 2.0;
-        let aspect_ratio = self.screen_width as f32 / self.screen_height as f32;
-        let w_t_v = Mat4::look_at_rh(cam_pos, cam_look_at, Vec3::Y);
-
-        let z_near = -0.1;
-        let z_far = -20.0;
-        let clip_info = Vec3::new(z_near * z_far, z_near - z_far, z_far);
-        let perspective_mat = Mat4::perspective_rh(fov, aspect_ratio, -z_near, -z_far);
-
-        let w = self.screen_width as f32;
-        let h = self.screen_height as f32;
-        #[rustfmt::skip]
-        let proj_to_pixel = Mat4::from_cols_array(&[
-            w / 2.0, 0.0, 0.0, 0.0,
-            0.0, h / 2.0, 0.0, 0.0,
-            0.0, 0.0, 0.5, 0.0,
-            w / 2.0, h / 2.0, 0.5, 1.0,
-        ]) * perspective_mat;
-
-        let cam_forward = (cam_pos - cam_look_at).normalize();
-        let mut cam_up = Vec3::Y;
-        let cam_right = cam_up.cross(cam_forward).normalize();
-        cam_up = cam_forward.cross(cam_right);
-
-        let v_height = 2.0 * fov.tan() * focus_dist;
-        let v_width = v_height * aspect_ratio;
-        let v_u = v_width * cam_right;
-        let v_v = v_height * cam_up;
-        let pixel_delta_u = v_u / self.screen_width as f32;
-        let pixel_delta_v = v_v / self.screen_height as f32;
-        let pixel_down_left = cam_pos - focus_dist * cam_forward - (v_u + v_v) * 0.5
-            + 0.5 * (pixel_delta_u + pixel_delta_v);
-
-        unsafe {
-            gl.use_program(Some(self.ssrt_program));
-            self.scene.bind_as_textures(gl, TEXTURE0);
-
-            gl.uniform_3_f32_slice(
-                gl.get_uniform_location(self.ssrt_program, "pixel_down_left")
-                    .as_ref(),
-                w_t_v
-                    .mul_vec4(Vec4::from((pixel_down_left, 1.0)))
-                    .truncate()
-                    .as_ref(),
-            );
-            gl.uniform_3_f32_slice(
-                gl.get_uniform_location(self.ssrt_program, "pixel_delta_u")
-                    .as_ref(),
-                Mat3::from_mat4(w_t_v).mul_vec3(pixel_delta_u).as_ref(),
-            );
-            gl.uniform_3_f32_slice(
-                gl.get_uniform_location(self.ssrt_program, "pixel_delta_v")
-                    .as_ref(),
-                Mat3::from_mat4(w_t_v).mul_vec3(pixel_delta_v).as_ref(),
-            );
-            gl.uniform_1_i32(
-                gl.get_uniform_location(self.ssrt_program, "depth_tex")
-                    .as_ref(),
-                2,
-            );
-            gl.uniform_matrix_4_f32_slice(
-                gl.get_uniform_location(self.ssrt_program, "project_to_pixel")
-                    .as_ref(),
-                false,
-                proj_to_pixel.as_ref(),
-            );
-            gl.uniform_1_f32(
-                gl.get_uniform_location(self.ssrt_program, "near_plane_z")
-                    .as_ref(),
-                0.1,
-            );
-            gl.uniform_2_f32(
-                gl.get_uniform_location(self.ssrt_program, "screen_dimensions")
-                    .as_ref(),
-                self.screen_width as f32,
-                self.screen_height as f32,
-            );
-            gl.uniform_2_f32_slice(
-                gl.get_uniform_location(self.ssrt_program, "clip_info")
-                    .as_ref(),
-                clip_info.as_ref(),
-            );
-
-            gl.clear_color(0.0, 0.0, 0.0, 0.0);
-            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-            self.draw_screen_quad(gl, self.ssrt_program);
-        }
-    }
+    fn draw_ssrt(&self, gl: &Context) {}
 
     fn draw_screen_quad(&self, gl: &Context, program: NativeProgram) {
         unsafe {
@@ -495,11 +377,6 @@ impl MicroGLUT for App {
                 include_str!("scene_vertex.glsl"),
                 include_str!("scene_fragment.glsl"),
             );
-            let depth_pass_program = load_shaders(
-                gl,
-                include_str!("vertex.glsl"),
-                include_str!("../shaders/pass.frag"),
-            );
             let depth_program = load_shaders(
                 gl,
                 include_str!("vertex.glsl"),
@@ -542,7 +419,6 @@ impl MicroGLUT for App {
                 quad_vertex_buffer: quad_vbo,
                 quad_texcoord_buffer: quad_tex_vbo,
                 scene_program,
-                depth_pass_program,
                 depth_program,
                 ssrt_program,
                 rc_program,
@@ -568,7 +444,7 @@ impl MicroGLUT for App {
         //     gl.bind_framebuffer(FRAMEBUFFER, None);
         // }
         // self.draw_ssrt(gl);
-        self.mip_map_depth(gl);
+        self.generate_hi_z_buffer(gl);
         //unsafe {
         //    gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
         //    gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);

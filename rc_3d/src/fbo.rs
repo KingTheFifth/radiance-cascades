@@ -3,8 +3,8 @@ use core::num;
 use microglut::glow::{
     Context, HasContext, NativeFramebuffer, NativeTexture, COLOR_ATTACHMENT0, DEPTH_ATTACHMENT,
     DEPTH_COMPONENT, DEPTH_COMPONENT32, FLOAT, FRAMEBUFFER, LINEAR, NEAREST,
-    NEAREST_MIPMAP_NEAREST, RENDERBUFFER, REPEAT, RGBA, RGBA32F, TEXTURE_2D, TEXTURE_MAG_FILTER,
-    TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, UNSIGNED_BYTE,
+    NEAREST_MIPMAP_NEAREST, RENDERBUFFER, REPEAT, RG, RG16F, RGBA, RGBA32F, TEXTURE_2D,
+    TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, UNSIGNED_BYTE,
 };
 
 pub struct SceneFBO {
@@ -79,11 +79,11 @@ impl SceneFBO {
             gl.tex_image_2d(
                 TEXTURE_2D,
                 0,
-                RGBA32F as _,
+                RG16F as _,
                 width,
                 height,
                 0,
-                RGBA,
+                RG,
                 UNSIGNED_BYTE,
                 None,
             );
