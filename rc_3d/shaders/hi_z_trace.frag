@@ -4,6 +4,7 @@ in vec2 tex_coord;
 out vec4 color;
 
 uniform sampler2D hi_z_tex;
+uniform sampler2D scene_tex;
 
 layout(std430) buffer HiZConstants {
     vec2 screen_res;
@@ -29,17 +30,18 @@ const float HI_Z_STEP_EPS = 0.001;
 float get_far_z_depth() {
     // TODO: Is this correct?
     return far_z_depth;
+    //return 1.0;
 }
 
 vec2 get_hi_z_pixel(vec2 point, vec2 level_size) {
     // TODO: Is this correct?
-    return floor((point * screen_res_inv) * level_size);
+    return floor((point * 1.0) * level_size);
 }
 
 // ray start and direction are in screen-space coordinates
 // ray direction should not be normalised
 void min_max_hi_z_traversal(
-    vec2 step,
+    vec2 step_length,
     vec2 step_offset,
     vec3 ray_start,
     vec3 ray_dir,
@@ -56,7 +58,7 @@ void min_max_hi_z_traversal(
         const vec2 level_size = vec2(textureSize(hi_z_tex, int(mip_level)).xy);
         const vec2 pixel = get_hi_z_pixel(max_ray_point_xy, level_size);
 
-        const vec2 t_pixel_xy = ((pixel + step) / level_size + step_offset - ray_start.xy) * ray_dir_inv.xy;
+        const vec2 t_pixel_xy = ((pixel + step_length) / level_size + step_offset - ray_start.xy) * ray_dir_inv.xy;
         const float t_pixel_edge = min(t_pixel_xy.x, t_pixel_xy.y);
 
         vec2 scene_z_minmax = texelFetch(hi_z_tex, ivec2(pixel), int(mip_level)).rg;
@@ -101,18 +103,18 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
     ray_dir.y = (ray_dir_abs.y < DIR_EPS_Y) ? DIR_EPS_Y * step_sign.y : ray_dir.y;
     ray_dir.z = (ray_dir_abs.z < DIR_EPS_Z) ? DIR_EPS_Z * step_sign.z : ray_dir.z;
 
-    // Clamp step from the range [-1, 1] to [0, 1]
-    vec2 step = clamp(step_sign.xy, 0.0, 1.0);
+    // Clamp step_length from the range [-1, 1] to [0, 1]
+    vec2 step_length = clamp(step_sign.xy, 0.0, 1.0);
 
     vec3 ray_dir_inv = 1.0 / ray_dir;
 
     const vec2 starting_ray_pixel = get_hi_z_pixel(ray_start.xy, hi_z_resolution);
-    const vec2 t_start_pixel_xy = ((starting_ray_pixel + step) / hi_z_resolution + step_offset - ray_start.xy) * ray_dir_inv.xy; 
+    const vec2 t_start_pixel_xy = ((starting_ray_pixel + step_length) / hi_z_resolution + step_offset - ray_start.xy) * ray_dir_inv.xy; 
     float t_param = min(t_start_pixel_xy.x, t_start_pixel_xy.y);
     vec2 t_scene_z_minmax = vec2(1.0, 0.0);
     float mip_level = hi_z_start_mip_level;
 
-    min_max_hi_z_traversal(step, step_offset, ray_start, ray_dir, ray_dir_inv, mip_level, iters, t_param, t_scene_z_minmax);
+    min_max_hi_z_traversal(step_length, step_offset, ray_start, ray_dir, ray_dir_inv, mip_level, iters, t_param, t_scene_z_minmax);
 
     hit_point = vec3(ray_start + ray_dir * t_param);
     hit_point.xy *= hi_z_resolution;
@@ -121,10 +123,13 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
 }
 
 void main() {
-    vec3 ray_start = vec3(0.0);
-    vec3 ray_end = ray_start;
+    vec3 pixel_coord = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord));
+    vec3 ray_start = vec3(pixel_coord.xy, 0.01);
+    vec3 ray_end = pixel_coord;
     vec3 hit_point;
     float iters = 0.0;
     bool hit = trace(ray_start, ray_end, iters, hit_point);
-    color = vec4(vec3(hit), 1.0);
+    color = hit ? texture(scene_tex, hit_point.xy / screen_res) : vec4(1.0, 0.2, 0.2, 1.0);
+    //color = vec4(vec3(hit), 1.0);
+    //color = vec4(pixel_coord, 1.0);
 }

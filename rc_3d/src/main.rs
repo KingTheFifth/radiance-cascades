@@ -7,13 +7,12 @@ use bytemuck::{Pod, Zeroable};
 use fbo::SceneFBO;
 use microglut::{
     fbo::{bind_output_fbo, bind_texture_fbo},
-    glam::{Mat3, Mat4, Quat, Vec2, Vec3, Vec4},
+    glam::{Mat4, Quat, Vec2, Vec3},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
-        COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DEBUG_OUTPUT, DEPTH_BUFFER_BIT, DEPTH_TEST,
-        DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
-        SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D,
-        TEXTURE_MAX_LEVEL, TRIANGLES,
+        COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT, FRAMEBUFFER,
+        ONE_MINUS_SRC_ALPHA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
+        TEXTURE2, TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
     },
     load_shaders, MicroGLUT, Model, Window, FBO,
 };
@@ -441,6 +440,22 @@ impl MicroGLUT for App {
         let cascade_width = (screen_width as f32) / probe_spacing_adjusted;
         let cascade_height = (screen_height as f32) / probe_spacing_adjusted;
 
+        let screen_dims = Vec2::new(screen_width as _, screen_height as _);
+        let constants = HiZConstants {
+            screen_res: screen_dims,
+            screen_res_inv: 1.0 / screen_dims,
+            hi_z_resolution: screen_dims,
+            inv_hi_z_resolution: 1.0 / screen_dims,
+            hi_z_start_mip_level: 0.0,
+            hi_z_max_mip_level: 10.0,
+            max_steps: 100.0,
+            far_z_depth: 0.0,
+            perspective: Mat4::IDENTITY,
+            perspective_inv: Mat4::IDENTITY,
+            viewport: Mat4::IDENTITY,
+            viewport_inv: Mat4::IDENTITY,
+        };
+
         unsafe {
             let quad_vao = gl.create_vertex_array().unwrap();
             gl.bind_vertex_array(Some(quad_vao));
@@ -498,22 +513,6 @@ impl MicroGLUT for App {
                     .with_rotation(Quat::from_rotation_x(1.0))
                     .with_translation(Vec3::new(-0.5, 0.0, -1.0)),
             ];
-
-            let screen_dims = Vec2::new(screen_width as _, screen_height as _);
-            let constants = HiZConstants {
-                screen_res: screen_dims,
-                screen_res_inv: 1.0 / screen_dims,
-                hi_z_resolution: screen_dims,
-                inv_hi_z_resolution: 1.0 / screen_dims,
-                hi_z_start_mip_level: 1.0,
-                hi_z_max_mip_level: 10.0,
-                max_steps: 100.0,
-                far_z_depth: 0.0,
-                perspective: Mat4::IDENTITY,
-                perspective_inv: Mat4::IDENTITY,
-                viewport: Mat4::IDENTITY,
-                viewport_inv: Mat4::IDENTITY,
-            };
 
             let constants_ssbo = gl.create_buffer().unwrap();
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(constants_ssbo));
