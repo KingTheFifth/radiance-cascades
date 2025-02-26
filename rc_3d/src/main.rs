@@ -224,8 +224,8 @@ impl App {
             // Calculate each mip-level using the previous one as the input
             gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
             for level in 1..max_mip_level + 1 {
-                let mip_dims = start_dims / 2.0_f32.powi(level);
-                let prev_dims = start_dims / 2.0_f32.powi(level - 1);
+                let mip_dims = (start_dims / 2.0_f32.powi(level)).max(Vec2::new(1.0, 1.0));
+                let prev_dims = (start_dims / 2.0_f32.powi(level - 1)).max(Vec2::new(1.0, 1.0));
 
                 gl.framebuffer_texture(
                     FRAMEBUFFER,
@@ -263,6 +263,7 @@ impl App {
 
             // Restore to original value
             gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAX_LEVEL, 1000);
+            gl.viewport(0, 0, self.screen_width, self.screen_height);
 
             // Restore the original texture attachment to color attachment 0
             gl.framebuffer_texture(
@@ -280,13 +281,21 @@ impl App {
     fn draw_ssrt(&self, gl: &Context) {
         unsafe {
             gl.use_program(Some(self.ssrt_program));
+            gl.bind_framebuffer(FRAMEBUFFER, None);
 
             gl.active_texture(TEXTURE0);
-            gl.bind_texture(TEXTURE2, Some(self.scene.hi_z_texture));
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
             gl.uniform_1_i32(
                 gl.get_uniform_location(self.ssrt_program, "hi_z_tex")
                     .as_ref(),
                 0,
+            );
+            gl.active_texture(TEXTURE1);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.textures[0]));
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.ssrt_program, "scene_tex")
+                    .as_ref(),
+                1,
             );
 
             let constants_ssbo_loc = gl
@@ -544,7 +553,7 @@ impl MicroGLUT for App {
     fn display(&mut self, gl: &Context, window: &Window) {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
-        //self.draw_ssrt(gl);
+        self.draw_ssrt(gl);
         // unsafe {
         //     gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
         //     gl.read_buffer(COLOR_ATTACHMENT0);
@@ -562,16 +571,16 @@ impl MicroGLUT for App {
         //         LINEAR,
         //     );
         // }
-        unsafe {
-            gl.use_program(Some(self.fbo_program));
-            gl.active_texture(TEXTURE0);
-            gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
-            gl.bind_framebuffer(FRAMEBUFFER, None);
-            gl.clear_color(0.0, 0.0, 0.0, 0.0);
-            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-            gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
-            self.draw_screen_quad(gl, self.fbo_program);
-        }
+        //unsafe {
+        //    gl.use_program(Some(self.fbo_program));
+        //    gl.active_texture(TEXTURE0);
+        //    gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
+        //    gl.bind_framebuffer(FRAMEBUFFER, None);
+        //    gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        //    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+        //    gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
+        //    self.draw_screen_quad(gl, self.fbo_program);
+        //}
 
         // self.calculate_cascades(gl);
         //self.draw_fbo(gl, &self.scene, None);
