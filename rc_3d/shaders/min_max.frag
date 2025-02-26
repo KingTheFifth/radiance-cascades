@@ -8,7 +8,7 @@ uniform int level;
 uniform int prev_mip_level;
 uniform vec2 prev_level_dimensions;
 
-out vec2 color;
+layout(location = 3) out vec2 color;
 
 void main() {
     ivec2 pixel_coord = ivec2(floor(tex_coord * dimensions));

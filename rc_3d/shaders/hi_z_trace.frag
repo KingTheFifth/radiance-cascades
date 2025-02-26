@@ -4,7 +4,8 @@ in vec2 tex_coord;
 out vec4 color;
 
 uniform sampler2D hi_z_tex;
-uniform sampler2D scene_tex;
+uniform sampler2D scene_albedo;
+uniform sampler2D scene_normal;
 
 layout(std430) buffer HiZConstants {
     vec2 screen_res;
@@ -124,12 +125,14 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
 
 void main() {
     vec3 pixel_coord = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord));
-    vec3 ray_start = vec3(pixel_coord.xy, 0.01);
+    vec3 ray_start = pixel_coord;//vec3(pixel_coord.xy, 0.01);
     vec3 ray_end = pixel_coord;
     vec3 hit_point;
     float iters = 0.0;
     bool hit = trace(ray_start, ray_end, iters, hit_point);
-    color = hit ? texture(scene_tex, hit_point.xy / screen_res) : vec4(1.0, 0.2, 0.2, 1.0);
+    color = hit ? texture(scene_albedo, hit_point.xy / screen_res) : vec4(1.0, 0.2, 0.2, 1.0);
+    //color = vec4(texture(scene_normal, tex_coord).rgb, 1.0);
+
     //color = vec4(vec3(hit), 1.0);
     //color = vec4(pixel_coord, 1.0);
 }

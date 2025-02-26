@@ -4,19 +4,20 @@ extern crate load_file;
 use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
-use fbo::SceneFBO;
 use microglut::{
     fbo::{bind_output_fbo, bind_texture_fbo},
     glam::{Mat4, Quat, Vec2, Vec3},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
-        COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT, FRAMEBUFFER,
+        COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_ATTACHMENT4, COLOR_BUFFER_BIT, DEBUG_OUTPUT,
+        DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT, FRAMEBUFFER, MAX_COLOR_ATTACHMENTS,
         ONE_MINUS_SRC_ALPHA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
         TEXTURE2, TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
     },
     load_shaders, MicroGLUT, Model, Window, FBO,
 };
 use object::Object;
+use scene_fbo::SceneFBO;
 
 fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, message: String) {
     let severity = match severity {
@@ -27,8 +28,8 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
     eprintln!("[{severity}] {message}");
 }
 
-mod fbo;
 mod object;
+mod scene_fbo;
 
 /// Rounds up a number to a power of n.
 /// # Examples
@@ -178,7 +179,7 @@ impl App {
                 );
                 object
                     .model
-                    .draw(gl, self.scene_program, "position", None, None);
+                    .draw(gl, self.scene_program, "position", Some("v_normal"), None);
             }
 
             gl.bind_framebuffer(FRAMEBUFFER, None);
@@ -193,6 +194,8 @@ impl App {
         unsafe {
             // Mip-map level 0 separately with the scene depth buffer as input
             // to properly populate the first level of min & max depth
+            // Note: It is possible to write the level 0 data in the shader for the scene,
+            // but this fills level 0 with the scene clear colour for any holes in the scene
             gl.use_program(Some(self.depth_program));
             gl.bind_framebuffer(FRAMEBUFFER, Some(self.scene.fb));
             gl.active_texture(TEXTURE0);
@@ -204,7 +207,7 @@ impl App {
             );
             gl.framebuffer_texture(
                 FRAMEBUFFER,
-                COLOR_ATTACHMENT0,
+                COLOR_ATTACHMENT3,
                 Some(self.scene.hi_z_texture),
                 0,
             );
@@ -228,7 +231,7 @@ impl App {
 
                 gl.framebuffer_texture(
                     FRAMEBUFFER,
-                    COLOR_ATTACHMENT0,
+                    COLOR_ATTACHMENT3,
                     Some(self.scene.hi_z_texture),
                     level,
                 );
@@ -263,15 +266,6 @@ impl App {
             // Restore to original value
             gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAX_LEVEL, 1000);
             gl.viewport(0, 0, self.screen_width, self.screen_height);
-
-            // Restore the original texture attachment to color attachment 0
-            gl.framebuffer_texture(
-                FRAMEBUFFER,
-                COLOR_ATTACHMENT0,
-                Some(self.scene.textures[0]),
-                0,
-            );
-
             gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.bind_texture(TEXTURE_2D, None);
         }
@@ -290,11 +284,18 @@ impl App {
                 0,
             );
             gl.active_texture(TEXTURE1);
-            gl.bind_texture(TEXTURE_2D, Some(self.scene.textures[0]));
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.albedo));
             gl.uniform_1_i32(
-                gl.get_uniform_location(self.ssrt_program, "scene_tex")
+                gl.get_uniform_location(self.ssrt_program, "scene_albedo")
                     .as_ref(),
                 1,
+            );
+            gl.active_texture(TEXTURE2);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.normal));
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.ssrt_program, "scene_normal")
+                    .as_ref(),
+                2,
             );
 
             let constants_ssbo_loc = gl
@@ -469,11 +470,8 @@ impl MicroGLUT for App {
             gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&texcoords), STATIC_DRAW);
 
             // Load all shaders
-            let scene_program = load_shaders(
-                gl,
-                include_str!("scene_vertex.glsl"),
-                include_str!("scene_fragment.glsl"),
-            );
+            let scene_program =
+                load_shaders(gl, include_str!("scene.vert"), include_str!("scene.frag"));
             let depth_program = load_shaders(
                 gl,
                 include_str!("vertex.glsl"),
@@ -492,7 +490,7 @@ impl MicroGLUT for App {
             );
 
             let dist_field = FBO::init(gl, screen_width, screen_height, false);
-            let scene = SceneFBO::init(gl, screen_width, screen_height, 2);
+            let scene = SceneFBO::init(gl, screen_width, screen_height);
             let prev_cascade = FBO::init(gl, cascade_width as _, cascade_height as _, false);
             let curr_cascade = FBO::init(gl, cascade_width as _, cascade_height as _, false);
 
@@ -512,6 +510,10 @@ impl MicroGLUT for App {
                 Object::new(rock.clone())
                     .with_rotation(Quat::from_rotation_x(1.0))
                     .with_translation(Vec3::new(-0.5, 0.0, -1.0)),
+                Object::new(rock.clone())
+                    .with_rotation(Quat::from_rotation_x(PI))
+                    .with_uniform_scale(3.0)
+                    .with_translation(Vec3::new(0.0, -0.5, -1.0)),
             ];
 
             let constants_ssbo = gl.create_buffer().unwrap();
@@ -552,7 +554,8 @@ impl MicroGLUT for App {
     fn display(&mut self, gl: &Context, window: &Window) {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
-        self.draw_ssrt(gl);
+        //self.draw_ssrt(gl);
+
         // unsafe {
         //     gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
         //     gl.read_buffer(COLOR_ATTACHMENT0);
@@ -570,16 +573,16 @@ impl MicroGLUT for App {
         //         LINEAR,
         //     );
         // }
-        //unsafe {
-        //    gl.use_program(Some(self.fbo_program));
-        //    gl.active_texture(TEXTURE0);
-        //    gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
-        //    gl.bind_framebuffer(FRAMEBUFFER, None);
-        //    gl.clear_color(0.0, 0.0, 0.0, 0.0);
-        //    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-        //    gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
-        //    self.draw_screen_quad(gl, self.fbo_program);
-        //}
+        unsafe {
+            gl.use_program(Some(self.fbo_program));
+            gl.active_texture(TEXTURE0);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.normal));
+            gl.bind_framebuffer(FRAMEBUFFER, None);
+            gl.clear_color(0.0, 0.0, 0.0, 0.0);
+            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+            gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
+            self.draw_screen_quad(gl, self.fbo_program);
+        }
 
         // self.calculate_cascades(gl);
         //self.draw_fbo(gl, &self.scene, None);
