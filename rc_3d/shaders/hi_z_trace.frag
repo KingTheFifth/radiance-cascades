@@ -16,21 +16,28 @@ layout(std430) buffer HiZConstants {
     float hi_z_max_mip_level;
 
     float max_steps;
-    float far_z_depth;
+    float z_far;
 
     mat4 perspective;
     mat4 perspective_inv;
     mat4 viewport;
     mat4 viewport_inv;
+    float z_near;
+    float max_ray_distance;
 };
 const float DIR_EPS_X = 0.001;
 const float DIR_EPS_Y = 0.001;
 const float DIR_EPS_Z = 0.001;
 const float HI_Z_STEP_EPS = 0.001;
 
+float linearise_depth(float depth) {
+    float remapped_depth = depth * 2.0 - 1.0;
+    return (2.0 * z_near * z_far) / (z_far + z_near - remapped_depth * (z_far - z_near));
+}
+
 float get_far_z_depth() {
     // TODO: Is this correct?
-    return far_z_depth;
+    return z_far;
     //return 1.0;
 }
 
@@ -123,16 +130,41 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
     return (mip_level != -1.0) || ((t_param < t_scene_z_minmax.x || t_param > t_scene_z_minmax.y));
 }
 
-void main() {
-    vec3 pixel_coord = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord));
-    vec3 ray_start = pixel_coord;//vec3(pixel_coord.xy, 0.01);
-    vec3 ray_end = pixel_coord;
-    vec3 hit_point;
+vec4 ssr() {
+    vec3 ray_start = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord));
+    vec3 normal = texture(scene_normal, tex_coord).xyz;
+    float linear_depth = linearise_depth(ray_start.z);
+
+    vec3 origin_vs = (perspective_inv*viewport_inv * (-linear_depth)*vec4(ray_start, 1.0)).xyz;
+
+    vec3 view_ray_vs = normalize(origin_vs);
+    vec3 direction_vs = reflect(view_ray_vs, normal);
+    vec3 end_point_vs = origin_vs + direction_vs * max_ray_distance;
+    vec4 end_point_hs = viewport * perspective * vec4(end_point_vs, 1.0);
+    vec3 ray_end = end_point_hs.xyz / end_point_hs.w;
+
+    vec3 hit_point = vec3(-1.0, -1.0, 0.0);
     float iters = 0.0;
-    bool hit = trace(ray_start, ray_end, iters, hit_point);
-    color = hit ? texture(scene_albedo, hit_point.xy / screen_res) : vec4(1.0, 0.2, 0.2, 1.0);
+    bool hit = false;
+    if (direction_vs.z > 0.0) {
+        hit = trace(ray_start, ray_end, iters, hit_point);
+    }
+
+    return hit ? texture(scene_albedo, hit_point.xy / screen_res) : vec4(1.0, 0.0, 0.0, 1.0);
+}
+
+void main() {
+    // vec3 pixel_coord = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord));
+    // vec3 ray_start = pixel_coord;//vec3(pixel_coord.xy, 0.01);
+    // vec3 ray_end = pixel_coord;
+    // vec3 hit_point;
+    // float iters = 0.0;
+    // bool hit = trace(ray_start, ray_end, iters, hit_point);
+    // color = hit ? texture(scene_albedo, hit_point.xy / screen_res) : vec4(1.0, 0.0, 0.0, 1.0);
     //color = vec4(texture(scene_normal, tex_coord).rgb, 1.0);
 
     //color = vec4(vec3(hit), 1.0);
     //color = vec4(pixel_coord, 1.0);
+    vec4 albedo = texture(scene_albedo, tex_coord);
+    color = (albedo == vec4(1.0)) ? ssr() : albedo;
 }

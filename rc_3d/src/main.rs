@@ -6,7 +6,7 @@ use std::f32::consts::PI;
 use bytemuck::{Pod, Zeroable};
 use microglut::{
     fbo::{bind_output_fbo, bind_texture_fbo},
-    glam::{Mat4, Quat, Vec2, Vec3},
+    glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
         COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_ATTACHMENT4, COLOR_BUFFER_BIT, DEBUG_OUTPUT,
@@ -66,12 +66,15 @@ struct HiZConstants {
     pub hi_z_max_mip_level: f32,
 
     pub max_steps: f32,
-    pub far_z_depth: f32,
+    pub z_far: f32,
 
     pub perspective: Mat4,
     pub perspective_inv: Mat4,
     pub viewport: Mat4,
     pub viewport_inv: Mat4,
+    pub z_near: f32,
+    pub max_ray_distance: f32,
+    _padding: [f32; 2],
 }
 
 struct App {
@@ -126,6 +129,7 @@ impl App {
 
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(self.constants_ssbo));
             gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x2C, bytemuck::bytes_of(&-z_far));
+            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x130, bytemuck::bytes_of(&-z_near));
             gl.buffer_sub_data_u8_slice(
                 SHADER_STORAGE_BUFFER,
                 0x30,
@@ -176,6 +180,11 @@ impl App {
                         .as_ref(),
                     false,
                     object.get_transformation().as_ref(),
+                );
+                gl.uniform_4_f32_slice(
+                    gl.get_uniform_location(self.scene_program, "v_albedo")
+                        .as_ref(),
+                    object.albedo.as_ref(),
                 );
                 object
                     .model
@@ -447,14 +456,17 @@ impl MicroGLUT for App {
             screen_res_inv: 1.0 / screen_dims,
             hi_z_resolution: screen_dims,
             inv_hi_z_resolution: 1.0 / screen_dims,
-            hi_z_start_mip_level: 0.0,
+            hi_z_start_mip_level: 5.0,
             hi_z_max_mip_level: 10.0,
-            max_steps: 100.0,
-            far_z_depth: 0.0,
+            max_steps: 500.0,
+            z_near: 0.0,
+            z_far: 0.0,
             perspective: Mat4::IDENTITY,
             perspective_inv: Mat4::IDENTITY,
             viewport: Mat4::IDENTITY,
             viewport_inv: Mat4::IDENTITY,
+            max_ray_distance: 20.0,
+            _padding: [0.0, 0.0],
         };
 
         unsafe {
@@ -506,14 +518,21 @@ impl MicroGLUT for App {
             let objects = vec![
                 Object::new(rock.clone())
                     .with_rotation(Quat::from_rotation_x(0.2))
-                    .with_translation(Vec3::new(0.0, 0.0, -2.0)),
+                    .with_translation(Vec3::new(0.0, 0.0, -2.0))
+                    .with_albedo(Vec4::new(1.0, 0.2, 0.8, 1.0)),
                 Object::new(rock.clone())
                     .with_rotation(Quat::from_rotation_x(1.0))
-                    .with_translation(Vec3::new(-0.5, 0.0, -1.0)),
+                    .with_translation(Vec3::new(-0.5, 0.0, -1.0))
+                    .with_albedo(Vec4::new(0.0, 0.5, 0.8, 1.0)),
                 Object::new(rock.clone())
                     .with_rotation(Quat::from_rotation_x(PI))
-                    .with_uniform_scale(3.0)
-                    .with_translation(Vec3::new(0.0, -0.5, -1.0)),
+                    .with_uniform_scale(15.0)
+                    .with_translation(Vec3::new(0.0, -0.5, -3.0)),
+                Object::new(rock.clone())
+                    .with_rotation(Quat::from_rotation_x(3.0 * PI / 2.0))
+                    .with_uniform_scale(15.0)
+                    .with_translation(Vec3::new(0.0, 0.0, -6.0))
+                    .with_albedo(Vec4::new(0.5, 0.1, 0.5, 1.0)),
             ];
 
             let constants_ssbo = gl.create_buffer().unwrap();
@@ -554,7 +573,7 @@ impl MicroGLUT for App {
     fn display(&mut self, gl: &Context, window: &Window) {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
-        //self.draw_ssrt(gl);
+        self.draw_ssrt(gl);
 
         // unsafe {
         //     gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
@@ -573,16 +592,16 @@ impl MicroGLUT for App {
         //         LINEAR,
         //     );
         // }
-        unsafe {
-            gl.use_program(Some(self.fbo_program));
-            gl.active_texture(TEXTURE0);
-            gl.bind_texture(TEXTURE_2D, Some(self.scene.normal));
-            gl.bind_framebuffer(FRAMEBUFFER, None);
-            gl.clear_color(0.0, 0.0, 0.0, 0.0);
-            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-            gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
-            self.draw_screen_quad(gl, self.fbo_program);
-        }
+        // unsafe {
+        //     gl.use_program(Some(self.fbo_program));
+        //     gl.active_texture(TEXTURE0);
+        //     gl.bind_texture(TEXTURE_2D, Some(self.scene.normal));
+        //     gl.bind_framebuffer(FRAMEBUFFER, None);
+        //     gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        //     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+        //     gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
+        //     self.draw_screen_quad(gl, self.fbo_program);
+        // }
 
         // self.calculate_cascades(gl);
         //self.draw_fbo(gl, &self.scene, None);
