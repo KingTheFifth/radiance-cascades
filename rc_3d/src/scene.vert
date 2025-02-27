@@ -16,6 +16,7 @@ void main() {
     gl_Position = projection * world_to_view * model_to_world * vec4(position.xyz, 1.0);
     tex_coord = v_tex_coord;
     albedo = v_albedo;
-    emissive = vec4(0.0, 1.0, 0.0, 1.0);
+    //emissive = vec4(0.0, 1.0, 0.0, 1.0);
+    emissive = world_to_view * model_to_world * vec4(position.xyz, 1.0);
     normal = mat3(world_to_view * model_to_world) * v_normal;
 }

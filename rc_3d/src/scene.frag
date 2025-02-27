@@ -11,6 +11,6 @@ layout(location = 2) out vec4 g_normal;
 void main() {
     g_albedo = albedo;
     g_emissive = emissive;
-    g_emissive.a = albedo.a;
+    //g_emissive.a = albedo.a;
     g_normal = vec4(normalize(normal), 1.0);
 }

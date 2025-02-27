@@ -12,7 +12,7 @@ use microglut::{
         COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_ATTACHMENT4, COLOR_BUFFER_BIT, DEBUG_OUTPUT,
         DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT, FRAMEBUFFER, MAX_COLOR_ATTACHMENTS,
         ONE_MINUS_SRC_ALPHA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
-        TEXTURE2, TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
+        TEXTURE2, TEXTURE3, TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
     },
     load_shaders, MicroGLUT, Model, Window, FBO,
 };
@@ -71,7 +71,6 @@ struct HiZConstants {
     pub perspective: Mat4,
     pub perspective_inv: Mat4,
     pub viewport: Mat4,
-    pub viewport_inv: Mat4,
     pub z_near: f32,
     pub max_ray_distance: f32,
     _padding: [f32; 2],
@@ -108,14 +107,14 @@ impl App {
     fn draw_scene(&mut self, gl: &Context) {
         unsafe {
             let cam_pos = Vec3::ZERO;
-            let cam_look_at = -Vec3::Z;
+            let cam_look_at = Vec3::Z;
             let fov = PI / 2.0;
             let aspect_ratio = self.screen_width as f32 / self.screen_height as f32;
 
             let w_t_v = Mat4::look_at_rh(cam_pos, cam_look_at, Vec3::Y);
-            let z_near = -0.1;
-            let z_far = -20.0;
-            let perspective_mat = Mat4::perspective_rh(fov, aspect_ratio, -z_near, -z_far);
+            let z_near = 0.1;
+            let z_far = 20.0;
+            let perspective_mat = Mat4::perspective_rh(fov, aspect_ratio, z_near, z_far);
 
             let w_2 = self.screen_width as f32 / 2.0;
             let h_2 = self.screen_height as f32 / 2.0;
@@ -128,8 +127,8 @@ impl App {
             ]).transpose();
 
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(self.constants_ssbo));
-            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x2C, bytemuck::bytes_of(&-z_far));
-            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x130, bytemuck::bytes_of(&-z_near));
+            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x2C, bytemuck::bytes_of(&z_far));
+            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x130, bytemuck::bytes_of(&z_near));
             gl.buffer_sub_data_u8_slice(
                 SHADER_STORAGE_BUFFER,
                 0x30,
@@ -144,11 +143,6 @@ impl App {
                 SHADER_STORAGE_BUFFER,
                 0xB0,
                 bytemuck::bytes_of(&viewport_mat),
-            );
-            gl.buffer_sub_data_u8_slice(
-                SHADER_STORAGE_BUFFER,
-                0xF0,
-                bytemuck::bytes_of(&viewport_mat.inverse()),
             );
             gl.bind_buffer(SHADER_STORAGE_BUFFER, None);
 
@@ -306,6 +300,13 @@ impl App {
                     .as_ref(),
                 2,
             );
+            gl.active_texture(TEXTURE3);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.emissive));
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.ssrt_program, "scene_vs_position")
+                    .as_ref(),
+                3,
+            );
 
             let constants_ssbo_loc = gl
                 .get_shader_storage_block_index(self.ssrt_program, "HiZConstants")
@@ -456,7 +457,7 @@ impl MicroGLUT for App {
             screen_res_inv: 1.0 / screen_dims,
             hi_z_resolution: screen_dims,
             inv_hi_z_resolution: 1.0 / screen_dims,
-            hi_z_start_mip_level: 5.0,
+            hi_z_start_mip_level: 0.0,
             hi_z_max_mip_level: 10.0,
             max_steps: 500.0,
             z_near: 0.0,
@@ -464,7 +465,6 @@ impl MicroGLUT for App {
             perspective: Mat4::IDENTITY,
             perspective_inv: Mat4::IDENTITY,
             viewport: Mat4::IDENTITY,
-            viewport_inv: Mat4::IDENTITY,
             max_ray_distance: 20.0,
             _padding: [0.0, 0.0],
         };
@@ -517,21 +517,21 @@ impl MicroGLUT for App {
 
             let objects = vec![
                 Object::new(rock.clone())
-                    .with_rotation(Quat::from_rotation_x(0.2))
-                    .with_translation(Vec3::new(0.0, 0.0, -2.0))
+                    .with_rotation(Quat::from_rotation_x(-0.2))
+                    .with_translation(Vec3::new(0.0, 0.0, 2.0))
                     .with_albedo(Vec4::new(1.0, 0.2, 0.8, 1.0)),
                 Object::new(rock.clone())
-                    .with_rotation(Quat::from_rotation_x(1.0))
-                    .with_translation(Vec3::new(-0.5, 0.0, -1.0))
+                    .with_rotation(Quat::from_rotation_x(-1.0))
+                    .with_translation(Vec3::new(0.5, 0.0, 1.0))
                     .with_albedo(Vec4::new(0.0, 0.5, 0.8, 1.0)),
                 Object::new(rock.clone())
-                    .with_rotation(Quat::from_rotation_x(PI))
+                    .with_rotation(Quat::from_rotation_x(-PI))
                     .with_uniform_scale(15.0)
-                    .with_translation(Vec3::new(0.0, -0.5, -3.0)),
+                    .with_translation(Vec3::new(0.0, -0.5, 3.0)),
                 Object::new(rock.clone())
-                    .with_rotation(Quat::from_rotation_x(3.0 * PI / 2.0))
+                    .with_rotation(Quat::from_rotation_x(-3.0 * PI / 2.0))
                     .with_uniform_scale(15.0)
-                    .with_translation(Vec3::new(0.0, 0.0, -6.0))
+                    .with_translation(Vec3::new(0.0, 0.0, 6.0))
                     .with_albedo(Vec4::new(0.5, 0.1, 0.5, 1.0)),
             ];
 

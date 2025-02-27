@@ -6,6 +6,7 @@ out vec4 color;
 uniform sampler2D hi_z_tex;
 uniform sampler2D scene_albedo;
 uniform sampler2D scene_normal;
+uniform sampler2D scene_vs_position;
 
 layout(std430) buffer HiZConstants {
     vec2 screen_res;
@@ -21,7 +22,6 @@ layout(std430) buffer HiZConstants {
     mat4 perspective;
     mat4 perspective_inv;
     mat4 viewport;
-    mat4 viewport_inv;
     float z_near;
     float max_ray_distance;
 };
@@ -29,10 +29,35 @@ const float DIR_EPS_X = 0.001;
 const float DIR_EPS_Y = 0.001;
 const float DIR_EPS_Z = 0.001;
 const float HI_Z_STEP_EPS = 0.001;
+const bool REMAP_DEPTH = false;
 
-float linearise_depth(float depth) {
-    float remapped_depth = depth * 2.0 - 1.0;
-    return (2.0 * z_near * z_far) / (z_far + z_near - remapped_depth * (z_far - z_near));
+float screen_depth_to_view_depth(float depth) {
+    // NOTE: These calculations depend on the projection matrix
+    if (REMAP_DEPTH) {
+        float remapped_depth = depth * 2.0 - 1.0;
+        return - z_near * z_far / (z_far + remapped_depth * (z_near - z_far));
+    }
+    return - z_near * z_far / (z_far + depth * (z_near - z_far));
+}
+
+// pixel_coord.xy is the fragment coordinate (gl_FragCoord.xy),
+// pixel_coord.z is the depth saved in the depth buffer for the pixel
+vec4 screen_pos_to_view_pos(vec3 pixel_coord) {
+    // Adapted from https://www.khronos.org/opengl/wiki/Compute_eye_space_from_window_space
+    vec3 ndc = vec3(
+        2.0 * pixel_coord.x * screen_res_inv.x - 1.0,
+        2.0 * pixel_coord.y * screen_res_inv.y - 1.0,
+        2.0 * pixel_coord.z - 1.0
+    );
+
+    float clip_w = perspective[3].z / (ndc.z - perspective[2].z / perspective[2].w);
+    vec4 clip_pos = vec4(ndc.xyz * clip_w, clip_w);
+    return perspective_inv * clip_pos;
+}
+
+vec4 view_pos_to_screen_pos(vec3 view_pos) {
+    vec4 clip_pos = viewport * perspective * vec4(view_pos, 1.0);
+    return vec4(clip_pos.xyz / clip_pos.w, 1.0 / clip_pos.w);
 }
 
 float get_far_z_depth() {
@@ -131,11 +156,11 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
 }
 
 vec4 ssr() {
-    vec3 ray_start = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord));
+    vec3 ray_start = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord).r);
     vec3 normal = texture(scene_normal, tex_coord).xyz;
-    float linear_depth = linearise_depth(ray_start.z);
+    float linear_depth = screen_depth_to_view_depth(ray_start.z);
 
-    vec3 origin_vs = (perspective_inv*viewport_inv * (-linear_depth)*vec4(ray_start, 1.0)).xyz;
+    vec3 origin_vs = texture(scene_vs_position, tex_coord).xyz;
 
     vec3 view_ray_vs = normalize(origin_vs);
     vec3 direction_vs = reflect(view_ray_vs, normal);
@@ -166,5 +191,9 @@ void main() {
     //color = vec4(vec3(hit), 1.0);
     //color = vec4(pixel_coord, 1.0);
     vec4 albedo = texture(scene_albedo, tex_coord);
-    color = (albedo == vec4(1.0)) ? ssr() : albedo;
+    //color = (albedo == vec4(1.0)) ? ssr() : albedo;
+    vec3 pixel = vec3(gl_FragCoord.xy, textureLod(hi_z_tex, tex_coord, 0));
+    vec4 vs_pos = screen_pos_to_view_pos(pixel);
+    vec4 background = vec4(0.0, 0.5, 0.5, 1.0);
+    color = texture(scene_albedo, tex_coord) != background ? vs_pos : background;
 }

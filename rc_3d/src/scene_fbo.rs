@@ -38,7 +38,7 @@ impl SceneFBO {
                 gl,
                 width,
                 height,
-                RGBA16F as _,
+                RGBA32F as _,
                 RGBA,
                 COLOR_ATTACHMENT1,
                 false,
