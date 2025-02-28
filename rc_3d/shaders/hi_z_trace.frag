@@ -56,8 +56,15 @@ vec4 screen_pos_to_view_pos(vec3 pixel_coord) {
 }
 
 vec4 view_pos_to_screen_pos(vec3 view_pos) {
-    vec4 clip_pos = viewport * perspective * vec4(view_pos, 1.0);
-    return vec4(clip_pos.xyz / clip_pos.w, 1.0 / clip_pos.w);
+    vec4 clip_pos = perspective * vec4(view_pos, 1.0);
+    vec4 ndc = vec4(clip_pos.xyz / clip_pos.w, clip_pos.w);
+    vec4 screen_pos = vec4(
+        (ndc.x + 1.0) * 0.5 * screen_res.x,
+        (ndc.y + 1.0) * 0.5 * screen_res.y,
+        (ndc.z + 1.0) * 0.5,
+        ndc.w
+    );
+    return screen_pos;
 }
 
 float get_far_z_depth() {
@@ -160,13 +167,13 @@ vec4 ssr() {
     vec3 normal = texture(scene_normal, tex_coord).xyz;
     float linear_depth = screen_depth_to_view_depth(ray_start.z);
 
-    vec3 origin_vs = texture(scene_vs_position, tex_coord).xyz;
+    //vec3 origin_vs = texture(scene_vs_position, tex_coord).xyz;
+    vec3 ray_start_vs = screen_pos_to_view_pos(ray_start).xyz;
 
-    vec3 view_ray_vs = normalize(origin_vs);
+    vec3 view_ray_vs = normalize(ray_start_vs);
     vec3 direction_vs = reflect(view_ray_vs, normal);
-    vec3 end_point_vs = origin_vs + direction_vs * max_ray_distance;
-    vec4 end_point_hs = viewport * perspective * vec4(end_point_vs, 1.0);
-    vec3 ray_end = end_point_hs.xyz / end_point_hs.w;
+    vec3 end_point_vs = ray_start_vs + direction_vs * max_ray_distance;
+    vec3 ray_end = view_pos_to_screen_pos(end_point_vs).xyz;
 
     vec3 hit_point = vec3(-1.0, -1.0, 0.0);
     float iters = 0.0;
@@ -175,7 +182,7 @@ vec4 ssr() {
         hit = trace(ray_start, ray_end, iters, hit_point);
     }
 
-    return hit ? texture(scene_albedo, hit_point.xy / screen_res) : vec4(1.0, 0.0, 0.0, 1.0);
+    return hit ? texture(scene_albedo, hit_point.xy * screen_res_inv) : vec4(1.0, 0.0, 0.0, 1.0);
 }
 
 void main() {
@@ -191,9 +198,5 @@ void main() {
     //color = vec4(vec3(hit), 1.0);
     //color = vec4(pixel_coord, 1.0);
     vec4 albedo = texture(scene_albedo, tex_coord);
-    //color = (albedo == vec4(1.0)) ? ssr() : albedo;
-    vec3 pixel = vec3(gl_FragCoord.xy, textureLod(hi_z_tex, tex_coord, 0));
-    vec4 vs_pos = screen_pos_to_view_pos(pixel);
-    vec4 background = vec4(0.0, 0.5, 0.5, 1.0);
-    color = texture(scene_albedo, tex_coord) != background ? vs_pos : background;
+    color = (albedo == vec4(1.0)) ? ssr() : albedo;
 }
