@@ -5,16 +5,20 @@ use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
 use microglut::{
+    delta_time, elapsed_time,
     fbo::{bind_output_fbo, bind_texture_fbo},
     glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
         COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_ATTACHMENT4, COLOR_BUFFER_BIT, DEBUG_OUTPUT,
-        DEPTH_BUFFER_BIT, DEPTH_TEST, FLOAT, FRAMEBUFFER, MAX_COLOR_ATTACHMENTS,
-        ONE_MINUS_SRC_ALPHA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
-        TEXTURE2, TEXTURE3, TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
+        DEPTH_BUFFER_BIT, DEPTH_TEST, DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR,
+        MAX_COLOR_ATTACHMENTS, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER, SHADER_STORAGE_BUFFER,
+        SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3, TEXTURE_2D,
+        TEXTURE_MAX_LEVEL, TRIANGLES,
     },
-    load_shaders, MicroGLUT, Model, Window, FBO,
+    load_shaders,
+    sdl2::keyboard::{Keycode, Mod, Scancode},
+    MicroGLUT, Model, Window, FBO,
 };
 use object::Object;
 use scene_fbo::SceneFBO;
@@ -100,17 +104,18 @@ struct App {
     probe_spacing: f32,
     interval_length: f32,
     constants_ssbo: NativeBuffer,
+
+    cam_position: Vec3,
+    cam_look_direction: Vec3,
 }
 
 impl App {
     fn draw_scene(&mut self, gl: &Context) {
         unsafe {
-            let cam_pos = Vec3::ZERO;
-            let cam_look_at = Vec3::Z;
             let fov = PI / 2.0;
             let aspect_ratio = self.screen_width as f32 / self.screen_height as f32;
 
-            let w_t_v = Mat4::look_at_rh(cam_pos, cam_look_at, Vec3::Y);
+            let w_t_v = Mat4::look_to_rh(self.cam_position, self.cam_look_direction, Vec3::Y);
             let z_near = 0.1;
             let z_far = 20.0;
             let perspective_mat = Mat4::perspective_rh(fov, aspect_ratio, z_near, z_far);
@@ -251,6 +256,12 @@ impl App {
             }
 
             // Restore to original value
+            gl.framebuffer_texture(
+                FRAMEBUFFER,
+                COLOR_ATTACHMENT3,
+                Some(self.scene.hi_z_texture),
+                0,
+            );
             gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAX_LEVEL, 1000);
             gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.bind_framebuffer(FRAMEBUFFER, None);
@@ -443,12 +454,12 @@ impl MicroGLUT for App {
             inv_hi_z_resolution: 1.0 / screen_dims,
             hi_z_start_mip_level: 0.0,
             hi_z_max_mip_level: 10.0,
-            max_steps: 200.0,
+            max_steps: 400.0,
             z_near: 0.0,
             z_far: 0.0,
             perspective: Mat4::IDENTITY,
             perspective_inv: Mat4::IDENTITY,
-            max_ray_distance: 20.0,
+            max_ray_distance: 30.0,
             _padding: [0.0, 0.0],
         };
 
@@ -549,45 +560,55 @@ impl MicroGLUT for App {
                 probe_spacing: probe_spacing_adjusted,
                 interval_length: interval_length_adjusted,
                 constants_ssbo,
+                cam_position: Vec3::ZERO,
+                cam_look_direction: Vec3::Z,
             }
         }
     }
 
     fn display(&mut self, gl: &Context, window: &Window) {
+        let t_start = elapsed_time();
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.draw_ssrt(gl);
+        let t_end = elapsed_time();
+        println!("Time to render: {:?}", t_end - t_start);
 
-        // unsafe {
-        //     gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
-        //     gl.read_buffer(COLOR_ATTACHMENT0);
-        //     gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
-        //     gl.blit_framebuffer(
-        //         0,
-        //         0,
-        //         self.screen_width,
-        //         self.screen_height,
-        //         0,
-        //         0,
-        //         self.screen_width,
-        //         self.screen_height,
-        //         COLOR_BUFFER_BIT,
-        //         LINEAR,
-        //     );
-        // }
-        // unsafe {
-        //     gl.use_program(Some(self.fbo_program));
-        //     gl.active_texture(TEXTURE0);
-        //     gl.bind_texture(TEXTURE_2D, Some(self.scene.normal));
-        //     gl.bind_framebuffer(FRAMEBUFFER, None);
-        //     gl.clear_color(0.0, 0.0, 0.0, 0.0);
-        //     gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-        //     gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
-        //     self.draw_screen_quad(gl, self.fbo_program);
-        // }
+        //unsafe {
+        //    gl.use_program(Some(self.fbo_program));
+        //    gl.active_texture(TEXTURE0);
+        //    gl.bind_texture(TEXTURE_2D, Some(self.scene.albedo));
+        //    gl.bind_framebuffer(FRAMEBUFFER, None);
+        //    gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        //    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+        //    gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
+        //    self.draw_screen_quad(gl, self.fbo_program);
+        //}
 
         // self.calculate_cascades(gl);
         //self.draw_fbo(gl, &self.scene, None);
+    }
+
+    fn key_down(
+        &mut self,
+        keycode: Option<Keycode>,
+        scancode: Option<Scancode>,
+        keymod: Mod,
+        repeat: bool,
+    ) {
+        if let Some(kc) = keycode {
+            let cam_right = self.cam_look_direction.cross(Vec3::Y);
+            let direction = match kc {
+                Keycode::W => self.cam_look_direction,
+                Keycode::S => -self.cam_look_direction,
+                Keycode::A => -cam_right,
+                Keycode::D => cam_right,
+                Keycode::SPACE => Vec3::Y,
+                Keycode::LSHIFT => Vec3::NEG_Y,
+                _ => Vec3::ZERO,
+            };
+            self.cam_position += direction * delta_time();
+        }
     }
 }
 
