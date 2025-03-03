@@ -21,7 +21,6 @@ layout(std430) buffer HiZConstants {
 
     mat4 perspective;
     mat4 perspective_inv;
-    mat4 viewport;
     float z_near;
     float max_ray_distance;
 };
@@ -107,10 +106,10 @@ void min_max_hi_z_traversal(
             scene_z_minmax.xy = vec2(get_far_z_depth(), 0.0);
         }
 
-        t_scene_z_minmax = (scene_z_minmax - ray_start.z) * ray_dir_inv.z;
+        t_scene_z_minmax = (scene_z_minmax.xy - ray_start.z) * ray_dir_inv.z;
 
         mip_level--;
-        if (t_scene_z_minmax.x <= t_pixel_edge && t_param >= t_scene_z_minmax.y) {
+        if (t_scene_z_minmax.x <= t_pixel_edge && t_param <= t_scene_z_minmax.y) {
             // Hit at current mip level, go down to next one
             t_param = max(t_param, t_scene_z_minmax.x);
         }
@@ -159,44 +158,33 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
     hit_point = vec3(ray_start + ray_dir * t_param);
     hit_point.xy *= hi_z_resolution;
 
-    return (mip_level != -1.0) || ((t_param < t_scene_z_minmax.x || t_param > t_scene_z_minmax.y));
+    return ((mip_level != -1.0) || ((t_param < t_scene_z_minmax.x || t_param > t_scene_z_minmax.y)));
 }
 
 vec4 ssr() {
-    vec3 ray_start = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord).r);
-    vec3 normal = texture(scene_normal, tex_coord).xyz;
-    float linear_depth = screen_depth_to_view_depth(ray_start.z);
+    vec3 ray_start = vec3(gl_FragCoord.xy, texture(hi_z_tex, tex_coord).r);
+    vec3 normal_vs = texture(scene_normal, tex_coord).xyz;
 
     //vec3 origin_vs = texture(scene_vs_position, tex_coord).xyz;
     vec3 ray_start_vs = screen_pos_to_view_pos(ray_start).xyz;
 
     vec3 view_ray_vs = normalize(ray_start_vs);
-    vec3 direction_vs = reflect(view_ray_vs, normal);
+    vec3 direction_vs = reflect(view_ray_vs, normal_vs);
     vec3 end_point_vs = ray_start_vs + direction_vs * max_ray_distance;
     vec3 ray_end = view_pos_to_screen_pos(end_point_vs).xyz;
 
     vec3 hit_point = vec3(-1.0, -1.0, 0.0);
     float iters = 0.0;
-    bool hit = false;
+    bool missed = true;
     if (direction_vs.z > 0.0) {
-        hit = trace(ray_start, ray_end, iters, hit_point);
+        missed = trace(ray_start, ray_end, iters, hit_point);
     }
 
-    return hit ? texture(scene_albedo, hit_point.xy * screen_res_inv) : vec4(1.0, 0.0, 0.0, 1.0);
+    vec4 hit_color = (!missed) ? vec4(1.0, 0.0, 0.0, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
+    return hit_color;
 }
 
 void main() {
-    // vec3 pixel_coord = vec3(floor(tex_coord * screen_res), texture(hi_z_tex, tex_coord));
-    // vec3 ray_start = pixel_coord;//vec3(pixel_coord.xy, 0.01);
-    // vec3 ray_end = pixel_coord;
-    // vec3 hit_point;
-    // float iters = 0.0;
-    // bool hit = trace(ray_start, ray_end, iters, hit_point);
-    // color = hit ? texture(scene_albedo, hit_point.xy / screen_res) : vec4(1.0, 0.0, 0.0, 1.0);
-    //color = vec4(texture(scene_normal, tex_coord).rgb, 1.0);
-
-    //color = vec4(vec3(hit), 1.0);
-    //color = vec4(pixel_coord, 1.0);
     vec4 albedo = texture(scene_albedo, tex_coord);
     color = (albedo == vec4(1.0)) ? ssr() : albedo;
 }

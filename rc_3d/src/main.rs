@@ -70,7 +70,6 @@ struct HiZConstants {
 
     pub perspective: Mat4,
     pub perspective_inv: Mat4,
-    pub viewport: Mat4,
     pub z_near: f32,
     pub max_ray_distance: f32,
     _padding: [f32; 2],
@@ -116,19 +115,9 @@ impl App {
             let z_far = 20.0;
             let perspective_mat = Mat4::perspective_rh(fov, aspect_ratio, z_near, z_far);
 
-            let w_2 = self.screen_width as f32 / 2.0;
-            let h_2 = self.screen_height as f32 / 2.0;
-            #[rustfmt::skip]
-            let viewport_mat = Mat4::from_cols_array(&[
-                w_2, 0.0, 0.0, w_2,
-                0.0, h_2, 0.0, h_2,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
-            ]).transpose();
-
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(self.constants_ssbo));
             gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x2C, bytemuck::bytes_of(&z_far));
-            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x130, bytemuck::bytes_of(&z_near));
+            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0xB0, bytemuck::bytes_of(&z_near));
             gl.buffer_sub_data_u8_slice(
                 SHADER_STORAGE_BUFFER,
                 0x30,
@@ -138,11 +127,6 @@ impl App {
                 SHADER_STORAGE_BUFFER,
                 0x70,
                 bytemuck::bytes_of(&perspective_mat.inverse()),
-            );
-            gl.buffer_sub_data_u8_slice(
-                SHADER_STORAGE_BUFFER,
-                0xB0,
-                bytemuck::bytes_of(&viewport_mat),
             );
             gl.bind_buffer(SHADER_STORAGE_BUFFER, None);
 
@@ -459,13 +443,12 @@ impl MicroGLUT for App {
             inv_hi_z_resolution: 1.0 / screen_dims,
             hi_z_start_mip_level: 0.0,
             hi_z_max_mip_level: 10.0,
-            max_steps: 500.0,
+            max_steps: 100.0,
             z_near: 0.0,
             z_far: 0.0,
             perspective: Mat4::IDENTITY,
             perspective_inv: Mat4::IDENTITY,
-            viewport: Mat4::IDENTITY,
-            max_ray_distance: 20.0,
+            max_ray_distance: 5.0,
             _padding: [0.0, 0.0],
         };
 
