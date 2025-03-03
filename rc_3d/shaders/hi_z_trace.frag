@@ -176,15 +176,16 @@ vec4 ssr() {
     vec3 hit_point = vec3(-1.0, -1.0, 0.0);
     float iters = 0.0;
     bool missed = true;
-    if (direction_vs.z > 0.0) {
+    // TODO: Figure out why this condition does not work
+    if (true || direction_vs.z > 0.0) {
         missed = trace(ray_start, ray_end, iters, hit_point);
     }
 
-    vec4 hit_color = (!missed) ? vec4(1.0, 0.0, 0.0, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
+    vec4 hit_color = missed ? vec4(0.0, 0.5, 0.5, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
     return hit_color;
 }
 
 void main() {
     vec4 albedo = texture(scene_albedo, tex_coord);
-    color = (albedo == vec4(1.0)) ? ssr() : albedo;
+    color = (all(greaterThanEqual(albedo, vec4(1.0 - 0.001)))) ? ssr() : albedo;
 }

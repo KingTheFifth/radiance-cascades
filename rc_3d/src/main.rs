@@ -443,12 +443,12 @@ impl MicroGLUT for App {
             inv_hi_z_resolution: 1.0 / screen_dims,
             hi_z_start_mip_level: 0.0,
             hi_z_max_mip_level: 10.0,
-            max_steps: 100.0,
+            max_steps: 200.0,
             z_near: 0.0,
             z_far: 0.0,
             perspective: Mat4::IDENTITY,
             perspective_inv: Mat4::IDENTITY,
-            max_ray_distance: 5.0,
+            max_ray_distance: 20.0,
             _padding: [0.0, 0.0],
         };
 
