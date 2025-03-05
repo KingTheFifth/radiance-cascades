@@ -6,7 +6,7 @@ out vec4 color;
 uniform sampler2D hi_z_tex;
 uniform sampler2D scene_albedo;
 uniform sampler2D scene_normal;
-uniform sampler2D scene_vs_position;
+uniform sampler2D scene_emissive;
 
 layout(std430) buffer HiZConstants {
     vec2 screen_res;
@@ -29,6 +29,19 @@ const float DIR_EPS_Y = 0.001;
 const float DIR_EPS_Z = 0.001;
 const float HI_Z_STEP_EPS = 0.001;
 const bool REMAP_DEPTH = false;
+
+vec3 octahedral_decode(vec2 v) {
+    // Based on https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
+    //vec2 v_adjusted = 2.0 * v - 1.0;
+    vec2 v_adjusted = v;
+    vec3 n = vec3(v_adjusted.xy, 1.0 - abs(v_adjusted.x) - abs(v_adjusted.y));
+    float t = max((-n.z), 0.0);
+    return normalize(vec3(
+        n.x + ((n.x >= 0.0) ? (-t) : t),
+        n.y + ((n.y >= 0.0) ? (-t) : t),
+        n.z
+    ));
+}
 
 float screen_depth_to_view_depth(float depth) {
     // NOTE: These calculations depend on the projection matrix
@@ -163,7 +176,7 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
 
 vec4 ssr() {
     vec3 ray_start = vec3(gl_FragCoord.xy, texture(hi_z_tex, tex_coord).r);
-    vec3 normal_vs = texture(scene_normal, tex_coord).xyz;
+    vec3 normal_vs = octahedral_decode(texture(scene_normal, tex_coord).xy);
 
     //vec3 origin_vs = texture(scene_vs_position, tex_coord).xyz;
     vec3 ray_start_vs = screen_pos_to_view_pos(ray_start).xyz;

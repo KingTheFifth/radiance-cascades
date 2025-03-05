@@ -4,7 +4,7 @@ use microglut::glow::{
     Context, HasContext, NativeFramebuffer, NativeTexture, COLOR_ATTACHMENT0, COLOR_ATTACHMENT1,
     COLOR_ATTACHMENT2, COLOR_ATTACHMENT3, COLOR_ATTACHMENT4, DEPTH_ATTACHMENT, DEPTH_COMPONENT,
     DEPTH_COMPONENT32, FLOAT, FRAMEBUFFER, LINEAR, NEAREST, NEAREST_MIPMAP_NEAREST, RENDERBUFFER,
-    REPEAT, RG, RG16F, RGB, RGB16F, RGBA, RGBA16F, RGBA32F, TEXTURE0, TEXTURE_2D,
+    REPEAT, RG, RG16F, RG32F, RGB, RGB16F, RGBA, RGBA16F, RGBA32F, TEXTURE0, TEXTURE_2D,
     TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, UNSIGNED_BYTE,
 };
 
@@ -43,15 +43,8 @@ impl SceneFBO {
                 COLOR_ATTACHMENT1,
                 false,
             );
-            let normal = Self::create_texture(
-                gl,
-                width,
-                height,
-                RGB16F as _,
-                RGB,
-                COLOR_ATTACHMENT2,
-                false,
-            );
+            let normal =
+                Self::create_texture(gl, width, height, RG16F as _, RG, COLOR_ATTACHMENT2, false);
 
             let depth_texture = Self::create_texture(
                 gl,
@@ -64,7 +57,7 @@ impl SceneFBO {
             );
 
             let hi_z_texture =
-                Self::create_texture(gl, width, height, RG16F as _, RG, COLOR_ATTACHMENT3, true);
+                Self::create_texture(gl, width, height, RG32F as _, RG, COLOR_ATTACHMENT3, true);
 
             let draw_buffers = [
                 COLOR_ATTACHMENT0,

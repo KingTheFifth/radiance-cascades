@@ -298,7 +298,7 @@ impl App {
             gl.active_texture(TEXTURE3);
             gl.bind_texture(TEXTURE_2D, Some(self.scene.emissive));
             gl.uniform_1_i32(
-                gl.get_uniform_location(self.ssrt_program, "scene_vs_position")
+                gl.get_uniform_location(self.ssrt_program, "scene_emissive")
                     .as_ref(),
                 3,
             );
