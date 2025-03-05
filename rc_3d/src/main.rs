@@ -79,6 +79,35 @@ struct HiZConstants {
     _padding: [f32; 2],
 }
 
+#[repr(C)]
+#[derive(Default, Clone, Copy, Pod, Zeroable)]
+struct Constants {
+    pub screen_res: Vec2,
+    pub screen_res_inv: Vec2,
+
+    /// Hi Z screen-space ray marching
+    pub hi_z_resolution: Vec2,
+    pub inv_hi_z_resolution: Vec2,
+
+    pub perspective: Mat4,
+    pub perspective_inv: Mat4,
+
+    pub hi_z_start_mip_level: f32,
+    pub hi_z_max_mip_level: f32,
+    pub max_steps: f32,
+    pub max_ray_distance: f32,
+
+    pub z_far: f32,
+    pub z_near: f32,
+
+    // Radiance cascades
+    pub num_cascades: f32,
+    pub c0_probe_spacing: f32,
+    pub c0_interval_length: f32,
+    _padding: [f32; 1],
+    pub c0_resolution: Vec2,
+}
+
 struct App {
     //TODO: the "quad" is actually a triangle that covers the screen. Rename it accordingly?
     quad_vao: NativeVertexArray,
@@ -99,10 +128,7 @@ struct App {
 
     screen_width: i32,
     screen_height: i32,
-    cascade_width: f32,
-    cascade_height: f32,
-    probe_spacing: f32,
-    interval_length: f32,
+    constants: Constants,
     constants_ssbo: NativeBuffer,
 
     cam_position: Vec3,
@@ -116,21 +142,22 @@ impl App {
             let aspect_ratio = self.screen_width as f32 / self.screen_height as f32;
 
             let w_t_v = Mat4::look_to_rh(self.cam_position, self.cam_look_direction, Vec3::Y);
-            let z_near = 0.1;
-            let z_far = 20.0;
-            let perspective_mat = Mat4::perspective_rh(fov, aspect_ratio, z_near, z_far);
+            let perspective_mat = Mat4::perspective_rh(
+                fov,
+                aspect_ratio,
+                self.constants.z_near,
+                self.constants.z_far,
+            );
 
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(self.constants_ssbo));
-            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x2C, bytemuck::bytes_of(&z_far));
-            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0xB0, bytemuck::bytes_of(&z_near));
             gl.buffer_sub_data_u8_slice(
                 SHADER_STORAGE_BUFFER,
-                0x30,
+                0x20,
                 bytemuck::bytes_of(&perspective_mat),
             );
             gl.buffer_sub_data_u8_slice(
                 SHADER_STORAGE_BUFFER,
-                0x70,
+                0x60,
                 bytemuck::bytes_of(&perspective_mat.inverse()),
             );
             gl.bind_buffer(SHADER_STORAGE_BUFFER, None);
@@ -181,8 +208,7 @@ impl App {
     }
 
     fn generate_hi_z_buffer(&self, gl: &Context) {
-        let start_dims = Vec2::new(self.screen_width as _, self.screen_height as _);
-        let max_mip_level = self.screen_width.max(self.screen_height).ilog2() as i32;
+        let start_dims = self.constants.hi_z_resolution;
         unsafe {
             // Mip-map level 0 separately with the scene depth buffer as input
             // to properly populate the first level of min & max depth
@@ -217,7 +243,7 @@ impl App {
 
             // Calculate each mip-level using the previous one as the input
             gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
-            for level in 1..max_mip_level + 1 {
+            for level in 1..(self.constants.hi_z_max_mip_level as i32) + 1 {
                 let mip_dims = (start_dims / 2.0_f32.powi(level)).max(Vec2::new(1.0, 1.0));
                 let prev_dims = (start_dims / 2.0_f32.powi(level - 1)).max(Vec2::new(1.0, 1.0));
 
@@ -342,86 +368,64 @@ impl App {
     }
 
     fn calculate_cascades(&mut self, gl: &Context) {
-        let num_cascades = (Vec2::ZERO.distance(Vec2::new(
-            self.screen_width as f32,
-            self.screen_height as f32,
-        )))
-        .log(4.0)
-        .ceil() as i32;
         unsafe {
-            for n in (0..num_cascades).rev() {
-                gl.use_program(Some(self.rc_program));
-                bind_texture_fbo(gl, &self.prev_cascade, TEXTURE0);
-                bind_texture_fbo(gl, &self.dist_field, TEXTURE1);
-                self.scene.bind_as_textures(gl, TEXTURE2);
+            gl.use_program(Some(self.rc_program));
+            bind_output_fbo(
+                gl,
+                Some(&self.curr_cascade),
+                self.screen_width,
+                self.screen_height,
+            );
+            bind_texture_fbo(gl, &self.prev_cascade, TEXTURE0);
+            gl.active_texture(TEXTURE1);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.albedo));
+            gl.active_texture(TEXTURE2);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.emissive));
+            gl.active_texture(TEXTURE3);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
 
-                gl.uniform_1_i32(
-                    gl.get_uniform_location(self.rc_program, "scene_emissive")
-                        .as_ref(),
-                    3,
-                );
-                gl.uniform_1_i32(
-                    gl.get_uniform_location(self.rc_program, "scene_albedo")
-                        .as_ref(),
-                    2,
-                );
-                gl.uniform_1_i32(
-                    gl.get_uniform_location(self.rc_program, "dist_field")
-                        .as_ref(),
-                    1,
-                );
-                gl.uniform_1_i32(
-                    gl.get_uniform_location(self.rc_program, "prev_cascade")
-                        .as_ref(),
-                    0,
-                );
-                gl.uniform_2_f32(
-                    gl.get_uniform_location(self.rc_program, "screen_dimensions")
-                        .as_ref(),
-                    self.screen_width as _,
-                    self.screen_height as _,
-                );
-                gl.uniform_2_f32(
-                    gl.get_uniform_location(self.rc_program, "cascade_dimensions")
-                        .as_ref(),
-                    self.cascade_width as _,
-                    self.cascade_height as _,
-                );
-                gl.uniform_1_f32(
-                    gl.get_uniform_location(self.rc_program, "num_cascades")
-                        .as_ref(),
-                    num_cascades as _,
-                );
-                gl.uniform_1_f32(
-                    gl.get_uniform_location(self.rc_program, "c0_probe_spacing")
-                        .as_ref(),
-                    self.probe_spacing,
-                );
-                gl.uniform_1_f32(
-                    gl.get_uniform_location(self.rc_program, "c0_interval_length")
-                        .as_ref(),
-                    self.interval_length,
-                );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.rc_program, "prev_cascade")
+                    .as_ref(),
+                0,
+            );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.rc_program, "scene_albedo")
+                    .as_ref(),
+                1,
+            );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.rc_program, "scene_emissive")
+                    .as_ref(),
+                2,
+            );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.rc_program, "hi_z_tex")
+                    .as_ref(),
+                3,
+            );
 
+            let constants_ssbo_loc = gl
+                .get_shader_storage_block_index(self.rc_program, "Constants")
+                .unwrap();
+            gl.shader_storage_block_binding(self.rc_program, constants_ssbo_loc, 0);
+
+            for n in (0..self.constants.num_cascades as i32).rev() {
                 gl.uniform_1_f32(
                     gl.get_uniform_location(self.rc_program, "cascade_index")
                         .as_ref(),
                     n as _,
                 );
 
-                bind_output_fbo(
-                    gl,
-                    Some(&self.curr_cascade),
-                    self.screen_width,
-                    self.screen_height,
-                );
-
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
-                gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+                gl.clear(COLOR_BUFFER_BIT);
                 self.draw_screen_quad(gl, self.rc_program);
 
-                self.draw_fbo(gl, &self.curr_cascade, Some(&self.prev_cascade));
+                //TODO: Blitting from current cascade to previous cascade
+                //self.draw_fbo(gl, &self.curr_cascade, Some(&self.prev_cascade));
             }
+
+            gl.bind_framebuffer(FRAMEBUFFER, None);
         }
     }
 }
@@ -438,29 +442,36 @@ impl MicroGLUT for App {
 
         let screen_width = window.size().0 as i32;
         let screen_height = window.size().1 as i32;
+        let screen_dims = Vec2::new(screen_width as _, screen_height as _);
 
-        let probe_spacing = 2.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
+        let probe_spacing = 1.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
         let interval_length = Vec2::ZERO.distance(Vec2::new(probe_spacing, probe_spacing)) * 0.5;
         let probe_spacing_adjusted = ceil_to_power_of_n(probe_spacing, 2.0);
         let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
         let cascade_width = (screen_width as f32) / probe_spacing_adjusted;
         let cascade_height = (screen_height as f32) / probe_spacing_adjusted;
+        let num_cascades = Vec2::ZERO.distance(screen_dims).log(4.0).ceil();
 
-        let screen_dims = Vec2::new(screen_width as _, screen_height as _);
-        let constants = HiZConstants {
+        let constants = Constants {
             screen_res: screen_dims,
             screen_res_inv: 1.0 / screen_dims,
+
             hi_z_resolution: screen_dims,
             inv_hi_z_resolution: 1.0 / screen_dims,
-            hi_z_start_mip_level: 0.0,
-            hi_z_max_mip_level: 10.0,
-            max_steps: 400.0,
-            z_near: 0.0,
-            z_far: 0.0,
             perspective: Mat4::IDENTITY,
             perspective_inv: Mat4::IDENTITY,
+            hi_z_start_mip_level: 0.0,
+            hi_z_max_mip_level: screen_width.max(screen_height).ilog2() as f32,
+            max_steps: 400.0,
             max_ray_distance: 30.0,
-            _padding: [0.0, 0.0],
+            z_far: 20.0,
+            z_near: 0.1,
+
+            num_cascades,
+            c0_probe_spacing: probe_spacing_adjusted,
+            c0_interval_length: interval_length_adjusted,
+            _padding: [0.0],
+            c0_resolution: Vec2::new(cascade_width, cascade_height),
         };
 
         unsafe {
@@ -488,7 +499,11 @@ impl MicroGLUT for App {
                 include_str!("vertex.glsl"),
                 include_str!("../shaders/hi_z_trace.frag"),
             );
-            let rc_program = load_shaders(gl, include_str!("vertex.glsl"), include_str!("rc.glsl"));
+            let rc_program = load_shaders(
+                gl,
+                include_str!("vertex.glsl"),
+                include_str!("../shaders/rc.frag"),
+            );
             let fbo_program = load_shaders(
                 gl,
                 include_str!("vertex.glsl"),
@@ -555,11 +570,8 @@ impl MicroGLUT for App {
                 curr_cascade,
                 screen_width,
                 screen_height,
-                cascade_width,
-                cascade_height,
-                probe_spacing: probe_spacing_adjusted,
-                interval_length: interval_length_adjusted,
                 constants_ssbo,
+                constants,
                 cam_position: Vec3::ZERO,
                 cam_look_direction: Vec3::Z,
             }
@@ -570,7 +582,9 @@ impl MicroGLUT for App {
         let t_start = elapsed_time();
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
-        self.draw_ssrt(gl);
+        //self.draw_ssrt(gl);
+        self.calculate_cascades(gl);
+        self.draw_fbo(gl, &self.curr_cascade, None);
         let t_end = elapsed_time();
         println!("Time to render: {:?}", t_end - t_start);
 
@@ -584,9 +598,6 @@ impl MicroGLUT for App {
         //    gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
         //    self.draw_screen_quad(gl, self.fbo_program);
         //}
-
-        // self.calculate_cascades(gl);
-        //self.draw_fbo(gl, &self.scene, None);
     }
 
     fn key_down(
