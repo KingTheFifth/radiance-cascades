@@ -89,6 +89,8 @@ struct Constants {
     pub hi_z_resolution: Vec2,
     pub inv_hi_z_resolution: Vec2,
 
+    pub world_to_view: Mat4,
+    pub world_to_view_inv: Mat4,
     pub perspective: Mat4,
     pub perspective_inv: Mat4,
 
@@ -150,14 +152,20 @@ impl App {
             );
 
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(self.constants_ssbo));
+            gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x20, bytemuck::bytes_of(&w_t_v));
             gl.buffer_sub_data_u8_slice(
                 SHADER_STORAGE_BUFFER,
-                0x20,
+                0x60,
+                bytemuck::bytes_of(&w_t_v.inverse()),
+            );
+            gl.buffer_sub_data_u8_slice(
+                SHADER_STORAGE_BUFFER,
+                0xA0,
                 bytemuck::bytes_of(&perspective_mat),
             );
             gl.buffer_sub_data_u8_slice(
                 SHADER_STORAGE_BUFFER,
-                0x60,
+                0xE0,
                 bytemuck::bytes_of(&perspective_mat.inverse()),
             );
             gl.bind_buffer(SHADER_STORAGE_BUFFER, None);
@@ -410,6 +418,7 @@ impl App {
                 .unwrap();
             gl.shader_storage_block_binding(self.rc_program, constants_ssbo_loc, 0);
 
+            let num_altitudes = 4;
             for n in (0..self.constants.num_cascades as i32).rev() {
                 gl.uniform_1_f32(
                     gl.get_uniform_location(self.rc_program, "cascade_index")
@@ -417,6 +426,11 @@ impl App {
                     n as _,
                 );
 
+                let num_azimuths = 8 * 2_i32.pow(n as _);
+                let cascade_res = Vec2::new(num_azimuths as _, num_altitudes as _)
+                    * self.constants.screen_res
+                    / (self.constants.c0_probe_spacing * 2.0_f32.powi(n));
+                //gl.viewport(0, 0, cascade_res.x as _, cascade_res.y as _);
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
                 gl.clear(COLOR_BUFFER_BIT);
                 self.draw_screen_quad(gl, self.rc_program);
@@ -425,6 +439,7 @@ impl App {
                 //self.draw_fbo(gl, &self.curr_cascade, Some(&self.prev_cascade));
             }
 
+            gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.bind_framebuffer(FRAMEBUFFER, None);
         }
     }
@@ -450,7 +465,8 @@ impl MicroGLUT for App {
         let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
         let cascade_width = (screen_width as f32) / probe_spacing_adjusted;
         let cascade_height = (screen_height as f32) / probe_spacing_adjusted;
-        let num_cascades = Vec2::ZERO.distance(screen_dims).log(4.0).ceil();
+        //let num_cascades = Vec2::ZERO.distance(screen_dims).log(4.0).ceil();
+        let num_cascades = 4.0;
 
         let constants = Constants {
             screen_res: screen_dims,
@@ -458,6 +474,8 @@ impl MicroGLUT for App {
 
             hi_z_resolution: screen_dims,
             inv_hi_z_resolution: 1.0 / screen_dims,
+            world_to_view: Mat4::IDENTITY,
+            world_to_view_inv: Mat4::IDENTITY,
             perspective: Mat4::IDENTITY,
             perspective_inv: Mat4::IDENTITY,
             hi_z_start_mip_level: 0.0,

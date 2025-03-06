@@ -10,13 +10,15 @@ uniform float cascade_index;
 
 out vec4 color;
 
-layout(std430) buffer Constants {
+layout(std430) readonly buffer Constants {
     vec2 screen_res;
     vec2 screen_res_inv;
 
     // Hi Z screen-space ray marching
     vec2 hi_z_resolution;
     vec2 inv_hi_z_resolution;
+    mat4 world_to_view;
+    mat4 world_to_view_inv;
     mat4 perspective;
     mat4 perspective_inv;
     float hi_z_start_mip_level;
@@ -38,6 +40,9 @@ const float DIR_EPS_Y = 0.001;
 const float DIR_EPS_Z = 0.001;
 const float HI_Z_STEP_EPS = 0.001;
 const bool REMAP_DEPTH = false;
+
+const float altitudes[4] = {acos(-0.75), acos(-0.25), acos(0.25), acos(0.75)};
+//const float altitudes[4] = {acos(0.75), acos(0.25), acos(-0.25), acos(-0.75)};
 
 vec3 octahedral_decode(vec2 v) {
     // Based on https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
@@ -183,30 +188,87 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
     return ((mip_level != -1.0) || ((t_param < t_scene_z_minmax.x || t_param > t_scene_z_minmax.y)));
 }
 
-// vec4 ssr() {
-//     vec3 ray_start = vec3(gl_FragCoord.xy, texture(hi_z_tex, tex_coord).r);
-//     vec3 normal_vs = octahedral_decode(texture(scene_normal, tex_coord).xy);
-// 
-//     //vec3 origin_vs = texture(scene_vs_position, tex_coord).xyz;
-//     vec3 ray_start_vs = screen_pos_to_view_pos(ray_start).xyz;
-// 
-//     vec3 view_ray_vs = normalize(ray_start_vs);
-//     vec3 direction_vs = reflect(view_ray_vs, normal_vs);
-//     vec3 end_point_vs = ray_start_vs + direction_vs * max_ray_distance;
-//     vec3 ray_end = view_pos_to_screen_pos(end_point_vs).xyz;
-// 
-//     vec3 hit_point = vec3(-1.0, -1.0, 0.0);
-//     float iters = 0.0;
-//     bool missed = true;
-//     // TODO: Figure out why this condition does not work
-//     if (true || direction_vs.z > 0.0) {
-//         missed = trace(ray_start, ray_end, iters, hit_point);
-//     }
-// 
-//     vec4 hit_color = missed ? vec4(0.0, 0.5, 0.5, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
-//     return hit_color;
-// }
+vec4 trace_radiance(vec3 ray_start, vec3 ray_dir, float interval_length) {
+    const vec3 ray_end = ray_start + ray_dir * interval_length;
+
+    //const vec3 ray_start_ss = view_pos_to_screen_pos((world_to_view * vec4(ray_start, 1.0)).xyz).xyz;
+    //const vec3 ray_end_ss = view_pos_to_screen_pos((world_to_view * vec4(ray_end, 1.0)).xyz).xyz;
+    const vec3 ray_start_ss = view_pos_to_screen_pos(ray_start).xyz;
+    const vec3 ray_end_ss = view_pos_to_screen_pos(ray_end).xyz;
+
+    vec3 hit_point = vec3(-1.0, -1.0, 0.0);
+    float iters = 0.0;
+    bool missed = trace(ray_start_ss, ray_end_ss, iters, hit_point);
+    return missed ? vec4(0.0, 0.5, 0.5, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
+}
+
+vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within_block) {
+    if (radiance.a == 0.0 || cascade_index >= num_cascades - 1.0) {
+        return vec4(radiance.rgb, 1.0 - radiance.a);
+    }
+    return vec4(0.0);
+}
 
 void main() {
-    color = texture(scene_albedo, tex_coord);
+    const float num_altitudinal_rays = 4.0;
+    const float num_azimuthal_rays = 8.0 * pow(2.0, cascade_index);
+
+    const vec2 probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index));
+    const vec2 probe_count = floor(screen_res / probe_spacing); // This is also the size of a direction block
+    const vec2 cascade_res = vec2(
+        probe_count.x * num_azimuthal_rays,
+        probe_count.y * num_altitudinal_rays
+    );  // Note: the width should remain constant and the height should half for every cascade
+
+    const vec2 pixel_coord = floor(tex_coord * cascade_res);
+    const vec2 coord_within_dir_block = mod(pixel_coord, probe_count);
+    const vec2 dir_block_index = floor(pixel_coord / probe_count);
+
+    const float interval_length = c0_interval_length * pow(4.0, cascade_index);
+    //const float interval_length = 40.0;
+    const float interval_start = c0_interval_length * ((1.0 - pow(4.0, cascade_index)) / (1.0 - 4.0));
+
+    const vec2 probe_pixel_pos = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
+    //const vec3 probe_pos_min = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos * screen_res_inv, 0).r);
+    const vec3 probe_pos_min = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).r);
+    const vec3 probe_ws_pos_min = (world_to_view_inv * vec4(screen_pos_to_view_pos(probe_pos_min).xyz, 1.0)).xyz;
+    //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
+
+    //if (probe_pos_min.z >= 0.99999) {
+    //    // Do not calculate probes placed in the sky/out of bounds
+    //    color = vec4(0.0, 0.5, 0.5, 1.0);
+    //    return;
+    //}
+
+    color = vec4(0.0);
+    for (float i = 0.0; i < 1.0; i++) {
+        const float preavg_azimuth_index = dir_block_index.x + i;
+        const float ray_azimuth = (preavg_azimuth_index + 0.5) * (2.0 * 3.14169266 / num_azimuthal_rays);
+        const float ray_altitude = altitudes[int(dir_block_index.y)];
+
+        //const vec3 ray_dir = vec3(
+        //    cos(ray_azimuth)*sin(ray_altitude),
+        //    cos(ray_altitude),
+        //    sin(ray_azimuth)*sin(ray_altitude)
+        //); //TODO: invert sign of some component?
+        const vec3 ray_dir = mat3(world_to_view) * vec3(
+            cos(ray_azimuth)*sin(ray_altitude),
+            cos(ray_altitude),
+            sin(ray_azimuth)*sin(ray_altitude)
+        ); //TODO: invert sign of some component?
+
+        // TODO: Trace both min and max depth probes at the same time somehow
+        const vec3 ray_min_start_ws = probe_ws_pos_min + ray_dir * interval_start;
+        const vec3 ray_min_start = probe_pos_min + ray_dir * interval_start;
+        //const vec3 ray_min_end = ray_min_start + ray_dir * interval_length;
+        //const vec3 ray_max_start = probe_pos_max + ray_dir * interval_start;
+
+        vec4 radiance_min = trace_radiance(ray_min_start, ray_dir, interval_length);
+        color += radiance_min;
+    }
+
+    //color = vec4(screen_pos_to_view_pos(probe_pos_min).xyz, 1.0);
+    //color = vec4(dir_block_index / vec2(num_azimuthal_rays, num_altitudinal_rays), 0.0, 1.0);
+    //color = vec4(coord_within_dir_block / probe_count, 0.0, 1.0);
+
 }
