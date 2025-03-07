@@ -4,6 +4,7 @@ extern crate load_file;
 use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
+use cascade_fbo::CascadeFBO;
 use microglut::{
     delta_time, elapsed_time,
     fbo::{bind_output_fbo, bind_texture_fbo},
@@ -32,6 +33,7 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
     eprintln!("[{severity}] {message}");
 }
 
+mod cascade_fbo;
 mod object;
 mod scene_fbo;
 
@@ -120,13 +122,11 @@ struct App {
     depth_program: NativeProgram,
     ssrt_program: NativeProgram,
     rc_program: NativeProgram,
-    fbo_program: NativeProgram,
+    post_pass_program: NativeProgram,
 
     objects: Vec<Object>,
     scene: SceneFBO,
-    dist_field: FBO,
-    prev_cascade: FBO,
-    curr_cascade: FBO,
+    cascades: CascadeFBO,
 
     screen_width: i32,
     screen_height: i32,
@@ -364,27 +364,10 @@ impl App {
         }
     }
 
-    fn draw_fbo(&self, gl: &Context, source: &FBO, destination: Option<&FBO>) {
-        unsafe {
-            gl.use_program(Some(self.fbo_program));
-            bind_texture_fbo(gl, source, TEXTURE0);
-            bind_output_fbo(gl, destination, self.screen_width, self.screen_height);
-            gl.clear_color(0.0, 0.0, 0.0, 0.0);
-            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-            self.draw_screen_quad(gl, self.fbo_program);
-        }
-    }
-
     fn calculate_cascades(&mut self, gl: &Context) {
         unsafe {
             gl.use_program(Some(self.rc_program));
-            bind_output_fbo(
-                gl,
-                Some(&self.curr_cascade),
-                self.screen_width,
-                self.screen_height,
-            );
-            bind_texture_fbo(gl, &self.prev_cascade, TEXTURE0);
+            gl.bind_framebuffer(FRAMEBUFFER, Some(self.cascades.fb));
             gl.active_texture(TEXTURE1);
             gl.bind_texture(TEXTURE_2D, Some(self.scene.albedo));
             gl.active_texture(TEXTURE2);
@@ -426,21 +409,55 @@ impl App {
                     n as _,
                 );
 
-                let num_azimuths = 8 * 2_i32.pow(n as _);
-                let cascade_res = Vec2::new(num_azimuths as _, num_altitudes as _)
-                    * self.constants.screen_res
-                    / (self.constants.c0_probe_spacing * 2.0_f32.powi(n));
-                //gl.viewport(0, 0, cascade_res.x as _, cascade_res.y as _);
+                gl.active_texture(TEXTURE0);
+                self.cascades.bind_cascade_as_texture(
+                    gl,
+                    (n + 1).min(self.constants.num_cascades as i32 - 1) as _,
+                    TEXTURE0,
+                );
+
+                gl.viewport(
+                    0,
+                    0,
+                    self.screen_width * 2,
+                    (self.screen_height as f32 * 4.0 / 2.0_f32.powi(n)) as _,
+                );
+                self.cascades.bind_cascade_as_output(gl, n as _);
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
                 gl.clear(COLOR_BUFFER_BIT);
                 self.draw_screen_quad(gl, self.rc_program);
-
-                //TODO: Blitting from current cascade to previous cascade
-                //self.draw_fbo(gl, &self.curr_cascade, Some(&self.prev_cascade));
             }
 
             gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.bind_framebuffer(FRAMEBUFFER, None);
+        }
+    }
+
+    fn integrate_radiance(&mut self, gl: &Context) {
+        unsafe {
+            gl.use_program(Some(self.post_pass_program));
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.post_pass_program, "merged_cascade_0")
+                    .as_ref(),
+                0,
+            );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.post_pass_program, "scene_normal")
+                    .as_ref(),
+                1,
+            );
+            let constants_ssbo_loc = gl
+                .get_shader_storage_block_index(self.post_pass_program, "Constants")
+                .unwrap();
+            gl.shader_storage_block_binding(self.post_pass_program, constants_ssbo_loc, 0);
+
+            self.cascades.bind_cascade_as_texture(gl, 0, TEXTURE0);
+            gl.active_texture(TEXTURE1);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.normal));
+
+            gl.viewport(0, 0, self.screen_width, self.screen_height);
+            gl.clear(COLOR_BUFFER_BIT);
+            self.draw_screen_quad(gl, self.post_pass_program);
         }
     }
 }
@@ -463,8 +480,8 @@ impl MicroGLUT for App {
         let interval_length = Vec2::ZERO.distance(Vec2::new(probe_spacing, probe_spacing)) * 0.5;
         let probe_spacing_adjusted = ceil_to_power_of_n(probe_spacing, 2.0);
         let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
-        let cascade_width = (screen_width as f32) / probe_spacing_adjusted;
-        let cascade_height = (screen_height as f32) / probe_spacing_adjusted;
+        let cascade_width = 2.0 * (screen_width as f32) / probe_spacing_adjusted;
+        let cascade_height = 4.0 * (screen_height as f32) / probe_spacing_adjusted;
         //let num_cascades = Vec2::ZERO.distance(screen_dims).log(4.0).ceil();
         let num_cascades = 4.0;
 
@@ -493,6 +510,7 @@ impl MicroGLUT for App {
         };
 
         unsafe {
+            gl.enable(DEBUG_OUTPUT);
             let quad_vao = gl.create_vertex_array().unwrap();
             gl.bind_vertex_array(Some(quad_vao));
 
@@ -522,16 +540,14 @@ impl MicroGLUT for App {
                 include_str!("vertex.glsl"),
                 include_str!("../shaders/rc.frag"),
             );
-            let fbo_program = load_shaders(
+            let post_pass_program = load_shaders(
                 gl,
                 include_str!("vertex.glsl"),
-                include_str!("fbo_fragment.glsl"),
+                include_str!("../shaders/post_pass.frag"),
             );
 
-            let dist_field = FBO::init(gl, screen_width, screen_height, false);
             let scene = SceneFBO::init(gl, screen_width, screen_height);
-            let prev_cascade = FBO::init(gl, cascade_width as _, cascade_height as _, false);
-            let curr_cascade = FBO::init(gl, cascade_width as _, cascade_height as _, false);
+            let cascades = CascadeFBO::new(gl, constants.c0_resolution, num_cascades as _);
 
             gl.viewport(0, 0, screen_width, screen_height);
 
@@ -580,12 +596,10 @@ impl MicroGLUT for App {
                 depth_program,
                 ssrt_program,
                 rc_program,
-                fbo_program,
+                post_pass_program,
                 objects,
                 scene,
-                dist_field,
-                prev_cascade,
-                curr_cascade,
+                cascades,
                 screen_width,
                 screen_height,
                 constants_ssbo,
@@ -600,22 +614,10 @@ impl MicroGLUT for App {
         let t_start = elapsed_time();
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
-        //self.draw_ssrt(gl);
         self.calculate_cascades(gl);
-        self.draw_fbo(gl, &self.curr_cascade, None);
+        self.integrate_radiance(gl);
         let t_end = elapsed_time();
         println!("Time to render: {:?}", t_end - t_start);
-
-        //unsafe {
-        //    gl.use_program(Some(self.fbo_program));
-        //    gl.active_texture(TEXTURE0);
-        //    gl.bind_texture(TEXTURE_2D, Some(self.scene.albedo));
-        //    gl.bind_framebuffer(FRAMEBUFFER, None);
-        //    gl.clear_color(0.0, 0.0, 0.0, 0.0);
-        //    gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-        //    gl.uniform_1_i32(gl.get_uniform_location(self.fbo_program, "tex").as_ref(), 0);
-        //    self.draw_screen_quad(gl, self.fbo_program);
-        //}
     }
 
     fn key_down(
