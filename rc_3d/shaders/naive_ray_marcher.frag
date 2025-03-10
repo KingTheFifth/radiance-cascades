@@ -82,20 +82,27 @@ vec4 view_pos_to_screen_pos(vec3 view_pos) {
     return screen_pos;
 }
 
-bool trace(vec3 ray_start_vs, vec3 ray_end_vs, out vec3 hit) {
+bool trace(vec3 ray_start_vs, vec3 direction_vs, out vec3 hit, out float iters) {
     hit = vec3(-1.0);
-    for (float i = 0.0; i < max_steps; i += 1.0) {
-        float traveled_distance = i / (max_steps - 1.0);
+    ray_start_vs = ray_start_vs + direction_vs * 0.01;
+    vec3 ray_end_vs = ray_start_vs + direction_vs * max_ray_distance;
+    bool out_of_bounds = false;
+    const float max_steps_inv = 1.0 / (max_steps - 1.0);
+
+    for (float i = 0.0; i < max_steps && !out_of_bounds; i += 1.0) {
+        iters++;
+        float traveled_distance = i * max_steps_inv;
         vec3 ray_vs = mix(ray_start_vs, ray_end_vs, traveled_distance);
         vec3 ray_ss = view_pos_to_screen_pos(ray_vs).xyz;
 
-        if (any(lessThan(ray_ss.xy, vec2(0.0))) || any(greaterThan(ray_ss.xy, screen_res))) {
-            return false;
-        }
+        //float scene_z_min = textureLod(hi_z_tex, ray_ss.xy * screen_res_inv, 0).x;
+        float scene_z_min = texelFetch(hi_z_tex, ivec2(ray_ss.xy), 0).x;
+        out_of_bounds = (scene_z_min == 0.0);
+        scene_z_min = screen_depth_to_view_depth(scene_z_min);
+        float scene_z_max = scene_z_min + 3.0;
 
-        vec2 min_max_depth = texelFetch(hi_z_tex, ivec2(ray_ss.xy), 0).xy;
-        float depth = screen_depth_to_view_depth(min_max_depth.x);
-        bool collides = depth <= ray_vs.z && (depth+3.0) >= ray_vs.z;
+        //bool collides = (min_depth <= ray_vs.z && (max_depth+3.0) >= ray_vs.z);
+        bool collides = (ray_vs.z >= scene_z_min && ray_vs.z <= scene_z_max);
         if (collides) {
             hit = ray_ss;
             return true;
@@ -115,7 +122,8 @@ void main() {
     vec3 ray_end = view_pos_to_screen_pos(end_point_vs).xyz;
 
     vec3 hit_point = vec3(-1.0, -1.0, 0.0);
-    bool hit = trace(ray_start_vs, end_point_vs, hit_point);
+    float iters = 0.0;
+    bool hit = trace(ray_start_vs, direction_vs, hit_point, iters);
     vec4 hit_color = (!hit) ? vec4(0.0, 0.5, 0.5, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
 
     color = hit_color;

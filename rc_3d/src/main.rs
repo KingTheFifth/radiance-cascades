@@ -16,7 +16,10 @@ use microglut::{
         TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
     },
     imgui, load_shaders,
-    sdl2::keyboard::{Keycode, Mod, Scancode},
+    sdl2::{
+        keyboard::{Keycode, Mod, Scancode},
+        mouse::MouseButton,
+    },
     MicroGLUT, Model, Window,
 };
 use object::Object;
@@ -143,6 +146,8 @@ struct App {
     debug: bool,
     debug_mode: DebugMode,
     debug_mode_idx: usize,
+
+    mouse_is_down: bool,
 }
 
 impl App {
@@ -623,6 +628,7 @@ impl MicroGLUT for App {
                 debug: false,
                 debug_mode: DebugMode::RadianceCascades,
                 debug_mode_idx: 0,
+                mouse_is_down: false,
             }
         }
     }
@@ -691,6 +697,35 @@ impl MicroGLUT for App {
                 _ => Vec3::ZERO,
             };
             self.cam_position += direction * delta_time();
+        }
+    }
+
+    fn mouse_down(&mut self, button: MouseButton, x: i32, y: i32) {
+        match button {
+            MouseButton::Right => {
+                self.mouse_is_down = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn mouse_up(&mut self, button: MouseButton, x: i32, y: i32) {
+        match button {
+            MouseButton::Right => {
+                self.mouse_is_down = false;
+            }
+            _ => {}
+        }
+    }
+
+    fn mouse_moved_rel(&mut self, xrel: i32, yrel: i32) {
+        if self.mouse_is_down {
+            self.cam_look_direction = Mat4::from_quat(
+                (Quat::from_rotation_y(2.0 * -xrel as f32 / self.screen_width as f32)
+                    * Quat::from_rotation_x(2.0 * yrel as f32 / self.screen_height as f32))
+                .normalize(),
+            )
+            .transform_vector3(self.cam_look_direction);
         }
     }
 

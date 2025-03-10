@@ -211,6 +211,30 @@ vec4 trace_radiance(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
     return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_albedo, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
 }
 
+vec4 trace_radiance_naive(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
+    vec3 ray_start_vs = (world_to_view * vec4(ray_start_ws, 1.0)).xyz;
+    vec3 ray_end_ws = ray_start_ws + ray_dir_ws * interval_length;
+    vec3 ray_end_vs = (world_to_view * vec4(ray_end_ws, 1.0)).xyz;
+    float step_count = float(2 * (2 << int(cascade_index) + 1));
+    for (float i = 0.0; i < step_count; i += 1.0) {
+        float traveled_distance = i / (max_steps - 1.0);
+        vec3 ray_vs = mix(ray_start_vs, ray_end_vs, traveled_distance);
+        vec3 ray_ss = view_pos_to_screen_pos(ray_vs).xyz;
+
+        if (any(lessThan(ray_ss.xy, vec2(0.0))) || any(greaterThan(ray_ss.xy, screen_res))) {
+            break;
+        }
+
+        vec2 min_max_depth = texelFetch(hi_z_tex, ivec2(ray_ss.xy), 0).xy;
+        float depth = screen_depth_to_view_depth(min_max_depth.x);
+        bool collides = (depth <= ray_vs.z && (depth+3.0) >= ray_vs.z);
+        if (collides) {
+            return vec4(linear_to_srgb(texture(scene_emissive, ray_ss.xy * screen_res_inv).rgb), 0.0);
+        }
+    }
+    return vec4(0.0, 0.2, 0.2, 1.0);
+}
+
 vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within_block) {
     if (radiance.a == 0.0 || cascade_index >= num_cascades - 1.0) {
         return vec4(radiance.rgb, 1.0 - radiance.a);
@@ -278,8 +302,9 @@ void main() {
         //const vec3 ray_max_start = probe_pos_max + ray_dir * interval_start;
 
         vec4 radiance_min = trace_radiance(ray_start_ws, ray_dir_ws, interval_length);
-        color += radiance_min * 0.25;
-        //color += merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block) * 0.25;
+        //vec4 radiance_min = trace_radiance_naive(ray_start_ws, ray_dir_ws, interval_length);
+        //color += radiance_min * 0.5;
+        color += merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block) * 0.5;
     }
 
 
