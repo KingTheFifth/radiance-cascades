@@ -206,6 +206,8 @@ vec4 trace_radiance(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
     float iters = 0.0;
     bool missed = trace(ray_start_ss, ray_end_ss, iters, hit_point_ss);
     // Alpha channel tracks occlusion such that 0.0 means the ray hit an occluder
+    //return missed ? vec4(vec3(0.0, 0.2, 0.2), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
+    //return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
     return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_albedo, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
 }
 
@@ -253,6 +255,7 @@ void main() {
     //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
     color = vec4(0.0);
+    
 
     if (min_probe_pos_ss.z >= 0.99999) {
         // Do not calculate probes placed in the sky/out of bounds
@@ -261,22 +264,24 @@ void main() {
 
     for (float i = 0.0; i < 2.0; i++) {
         const float preavg_azimuth_index = dir_block_index.x * 2.0 + i;
-        const float ray_azimuth = (preavg_azimuth_index + 0.5) * (2.0 * 3.14169266 / (num_azimuthal_rays * 2.0));
+        const float ray_azimuth = (preavg_azimuth_index + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays * 2.0));
         const float ray_altitude = altitudes[int(dir_block_index.y)];
 
-        const vec3 ray_dir_ws = vec3(
+        const vec3 ray_dir_ws = normalize(vec3(
             cos(ray_azimuth)*sin(ray_altitude),
             cos(ray_altitude),
             sin(ray_azimuth)*sin(ray_altitude)
-        ); //TODO: invert sign of some component?
+        )); //TODO: invert sign of some component?
 
         // TODO: Trace both min and max depth probes at the same time somehow
         const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
         //const vec3 ray_max_start = probe_pos_max + ray_dir * interval_start;
 
         vec4 radiance_min = trace_radiance(ray_start_ws, ray_dir_ws, interval_length);
-        color += merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block) * 0.25;
+        color += radiance_min * 0.25;
+        //color += merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block) * 0.25;
     }
+
 
     //color = vec4(screen_pos_to_view_pos(probe_pos_min).xyz, 1.0);
     //color = vec4(dir_block_index / vec2(num_azimuthal_rays, num_altitudinal_rays), 0.0, 1.0);

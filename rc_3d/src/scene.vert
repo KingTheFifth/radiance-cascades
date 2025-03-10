@@ -8,6 +8,7 @@ out vec4 albedo;
 out vec4 emissive;
 out vec3 normal;
 uniform vec4 v_albedo;
+uniform vec4 v_emissive;
 uniform mat4 model_to_world;
 uniform mat4 world_to_view;
 uniform mat4 projection;
@@ -17,6 +18,7 @@ void main() {
     tex_coord = v_tex_coord;
     albedo = v_albedo;
     //emissive = vec4(0.0, 1.0, 0.0, 1.0);
-    emissive = world_to_view * model_to_world * vec4(position.xyz, 1.0);
+    //emissive = world_to_view * model_to_world * vec4(position.xyz, 1.0);
+    emissive = v_emissive;
     normal = mat3(world_to_view * model_to_world) * v_normal;
 }

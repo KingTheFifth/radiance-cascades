@@ -9,6 +9,7 @@ pub struct Object {
     translation: Vec3,
     scale: Vec3,
     pub albedo: Vec4,
+    pub emissive: Vec4,
 }
 
 impl Object {
@@ -19,6 +20,7 @@ impl Object {
             translation: Vec3::ZERO,
             scale: Vec3::ONE,
             albedo: Vec4::ONE,
+            emissive: Vec4::ZERO,
         }
     }
 
@@ -47,6 +49,11 @@ impl Object {
 
     pub fn with_albedo(mut self, albedo: Vec4) -> Self {
         self.albedo = albedo;
+        self
+    }
+
+    pub fn with_emissive(mut self, emissive: Vec4) -> Self {
+        self.emissive = emissive;
         self
     }
 }

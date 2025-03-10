@@ -7,19 +7,17 @@ use bytemuck::{Pod, Zeroable};
 use cascade_fbo::CascadeFBO;
 use microglut::{
     delta_time, elapsed_time,
-    fbo::{bind_output_fbo, bind_texture_fbo},
     glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
-        COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_ATTACHMENT4, COLOR_BUFFER_BIT, DEBUG_OUTPUT,
-        DEPTH_BUFFER_BIT, DEPTH_TEST, DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR,
-        MAX_COLOR_ATTACHMENTS, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER, SHADER_STORAGE_BUFFER,
-        SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3, TEXTURE_2D,
-        TEXTURE_MAX_LEVEL, TRIANGLES,
+        COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, DEPTH_TEST,
+        DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
+        SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3,
+        TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
     },
-    load_shaders,
+    imgui, load_shaders,
     sdl2::keyboard::{Keycode, Mod, Scancode},
-    MicroGLUT, Model, Window, FBO,
+    MicroGLUT, Model, Window,
 };
 use object::Object;
 use scene_fbo::SceneFBO;
@@ -112,6 +110,11 @@ struct Constants {
     pub c0_resolution: Vec2,
 }
 
+enum DebugMode {
+    RadianceCascades,
+    RayMarching,
+}
+
 struct App {
     //TODO: the "quad" is actually a triangle that covers the screen. Rename it accordingly?
     quad_vao: NativeVertexArray,
@@ -135,6 +138,11 @@ struct App {
 
     cam_position: Vec3,
     cam_look_direction: Vec3,
+
+    debug_cascade_index: i32,
+    debug: bool,
+    debug_mode: DebugMode,
+    debug_mode_idx: usize,
 }
 
 impl App {
@@ -176,7 +184,7 @@ impl App {
             gl.enable(DEPTH_TEST);
             gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
 
-            gl.clear_color(0.0, 0.5, 0.5, 1.0);
+            gl.clear_color(0.0, 0.0, 0.0, 0.0);
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
 
             gl.uniform_matrix_4_f32_slice(
@@ -203,6 +211,11 @@ impl App {
                     gl.get_uniform_location(self.scene_program, "v_albedo")
                         .as_ref(),
                     object.albedo.as_ref(),
+                );
+                gl.uniform_4_f32_slice(
+                    gl.get_uniform_location(self.scene_program, "v_emissive")
+                        .as_ref(),
+                    object.emissive.as_ref(),
                 );
                 object
                     .model
@@ -329,16 +342,9 @@ impl App {
                     .as_ref(),
                 2,
             );
-            gl.active_texture(TEXTURE3);
-            gl.bind_texture(TEXTURE_2D, Some(self.scene.emissive));
-            gl.uniform_1_i32(
-                gl.get_uniform_location(self.ssrt_program, "scene_emissive")
-                    .as_ref(),
-                3,
-            );
 
             let constants_ssbo_loc = gl
-                .get_shader_storage_block_index(self.ssrt_program, "HiZConstants")
+                .get_shader_storage_block_index(self.ssrt_program, "Constants")
                 .unwrap();
             gl.shader_storage_block_binding(self.ssrt_program, constants_ssbo_loc, 0);
             self.draw_screen_quad(gl, self.ssrt_program);
@@ -446,6 +452,11 @@ impl App {
                     .as_ref(),
                 1,
             );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.post_pass_program, "scene_albedo")
+                    .as_ref(),
+                2,
+            );
             let constants_ssbo_loc = gl
                 .get_shader_storage_block_index(self.post_pass_program, "Constants")
                 .unwrap();
@@ -454,6 +465,8 @@ impl App {
             self.cascades.bind_cascade_as_texture(gl, 0, TEXTURE0);
             gl.active_texture(TEXTURE1);
             gl.bind_texture(TEXTURE_2D, Some(self.scene.normal));
+            gl.active_texture(TEXTURE2);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.albedo));
 
             gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.clear(COLOR_BUFFER_BIT);
@@ -510,7 +523,6 @@ impl MicroGLUT for App {
         };
 
         unsafe {
-            gl.enable(DEBUG_OUTPUT);
             let quad_vao = gl.create_vertex_array().unwrap();
             gl.bind_vertex_array(Some(quad_vao));
 
@@ -533,7 +545,7 @@ impl MicroGLUT for App {
             let ssrt_program = load_shaders(
                 gl,
                 include_str!("vertex.glsl"),
-                include_str!("../shaders/hi_z_trace.frag"),
+                include_str!("../shaders/naive_ray_marcher.frag"),
             );
             let rc_program = load_shaders(
                 gl,
@@ -562,7 +574,8 @@ impl MicroGLUT for App {
                 Object::new(rock.clone())
                     .with_rotation(Quat::from_rotation_x(-0.2))
                     .with_translation(Vec3::new(0.0, 0.0, 2.0))
-                    .with_albedo(Vec4::new(1.0, 0.2, 0.8, 1.0)),
+                    .with_albedo(Vec4::new(1.0, 0.2, 0.8, 1.0))
+                    .with_emissive(Vec4::new(4.0, 4.0, 4.0, 1.0)),
                 Object::new(rock.clone())
                     .with_rotation(Quat::from_rotation_x(-1.0))
                     .with_translation(Vec3::new(0.5, 0.0, 1.0))
@@ -606,6 +619,10 @@ impl MicroGLUT for App {
                 constants,
                 cam_position: Vec3::ZERO,
                 cam_look_direction: Vec3::Z,
+                debug_cascade_index: 0,
+                debug: false,
+                debug_mode: DebugMode::RadianceCascades,
+                debug_mode_idx: 0,
             }
         }
     }
@@ -615,7 +632,42 @@ impl MicroGLUT for App {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.calculate_cascades(gl);
-        self.integrate_radiance(gl);
+        if self.debug {
+            match self.debug_mode {
+                DebugMode::RayMarching => {
+                    self.draw_ssrt(gl);
+                }
+                DebugMode::RadianceCascades => unsafe {
+                    let cascade_res = Vec2::new(
+                        self.constants.c0_resolution.x,
+                        self.constants.c0_resolution.y / 2.0_f32.powi(self.debug_cascade_index),
+                    );
+                    gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.cascades.fb));
+                    gl.read_buffer(COLOR_ATTACHMENT0);
+                    gl.framebuffer_texture(
+                        READ_FRAMEBUFFER,
+                        COLOR_ATTACHMENT0,
+                        Some(self.cascades.cascades[self.debug_cascade_index as usize]),
+                        0,
+                    );
+                    gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
+                    gl.blit_framebuffer(
+                        0,
+                        0,
+                        cascade_res.x as _,
+                        cascade_res.y as _,
+                        0,
+                        0,
+                        self.screen_width,
+                        self.screen_height,
+                        COLOR_BUFFER_BIT,
+                        LINEAR as _,
+                    );
+                },
+            }
+        } else {
+            self.integrate_radiance(gl);
+        }
         let t_end = elapsed_time();
         println!("Time to render: {:?}", t_end - t_start);
     }
@@ -639,6 +691,61 @@ impl MicroGLUT for App {
                 _ => Vec3::ZERO,
             };
             self.cam_position += direction * delta_time();
+        }
+    }
+
+    fn ui(&mut self, gl: &Context, ui: &mut imgui::Ui) {
+        let mut constants_changed = false;
+        ui.checkbox("Enable debug mode", &mut self.debug);
+
+        let debug_modes = vec!["Radiance cascades", "Ray marcher"];
+        if ui.combo_simple_string("Debug mode", &mut self.debug_mode_idx, &debug_modes) {
+            match debug_modes[self.debug_mode_idx] {
+                "Radiance cascades" => {
+                    self.debug_mode = DebugMode::RadianceCascades;
+                }
+                "Ray marcher" => {
+                    self.debug_mode = DebugMode::RayMarching;
+                }
+                _ => unreachable!(),
+            }
+        }
+        if ui.tree_node("Radiance cascades").is_some() {
+            constants_changed = constants_changed
+                || ui
+                    .input_int("Cascade index", &mut self.debug_cascade_index)
+                    .build();
+            constants_changed = constants_changed
+                || ui.slider(
+                    "Interval length",
+                    0.0,
+                    200.0,
+                    &mut self.constants.c0_interval_length,
+                );
+        }
+        if ui.tree_node("Ray marching").is_some() {
+            constants_changed = constants_changed
+                || ui.slider(
+                    "Max ray length",
+                    0.0,
+                    200.0,
+                    &mut self.constants.max_ray_distance,
+                );
+            constants_changed = constants_changed
+                || ui
+                    .input_float("Max step count", &mut self.constants.max_steps)
+                    .build();
+        }
+
+        if constants_changed {
+            unsafe {
+                gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(self.constants_ssbo));
+                gl.buffer_data_u8_slice(
+                    SHADER_STORAGE_BUFFER,
+                    bytemuck::bytes_of(&self.constants),
+                    STATIC_DRAW,
+                );
+            }
         }
     }
 }
