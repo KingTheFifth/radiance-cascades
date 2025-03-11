@@ -116,6 +116,8 @@ struct Constants {
 enum DebugMode {
     RadianceCascades,
     RayMarching,
+    DepthBuffer,
+    Scene,
 }
 
 struct App {
@@ -352,6 +354,7 @@ impl App {
                 .get_shader_storage_block_index(self.ssrt_program, "Constants")
                 .unwrap();
             gl.shader_storage_block_binding(self.ssrt_program, constants_ssbo_loc, 0);
+            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
             self.draw_screen_quad(gl, self.ssrt_program);
         }
     }
@@ -462,6 +465,11 @@ impl App {
                     .as_ref(),
                 2,
             );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.post_pass_program, "scene_emissive")
+                    .as_ref(),
+                3,
+            );
             let constants_ssbo_loc = gl
                 .get_shader_storage_block_index(self.post_pass_program, "Constants")
                 .unwrap();
@@ -472,6 +480,8 @@ impl App {
             gl.bind_texture(TEXTURE_2D, Some(self.scene.normal));
             gl.active_texture(TEXTURE2);
             gl.bind_texture(TEXTURE_2D, Some(self.scene.albedo));
+            gl.active_texture(TEXTURE3);
+            gl.bind_texture(TEXTURE_2D, Some(self.scene.emissive));
 
             gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.clear(COLOR_BUFFER_BIT);
@@ -670,6 +680,40 @@ impl MicroGLUT for App {
                         LINEAR as _,
                     );
                 },
+                DebugMode::DepthBuffer => unsafe {
+                    gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
+                    gl.read_buffer(COLOR_ATTACHMENT3);
+                    gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
+                    gl.blit_framebuffer(
+                        0,
+                        0,
+                        self.screen_width,
+                        self.screen_height,
+                        0,
+                        0,
+                        self.screen_width,
+                        self.screen_height,
+                        COLOR_BUFFER_BIT,
+                        LINEAR as _,
+                    );
+                },
+                DebugMode::Scene => unsafe {
+                    gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
+                    gl.read_buffer(COLOR_ATTACHMENT0);
+                    gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
+                    gl.blit_framebuffer(
+                        0,
+                        0,
+                        self.screen_width,
+                        self.screen_height,
+                        0,
+                        0,
+                        self.screen_width,
+                        self.screen_height,
+                        COLOR_BUFFER_BIT,
+                        LINEAR as _,
+                    );
+                },
             }
         } else {
             self.integrate_radiance(gl);
@@ -733,7 +777,7 @@ impl MicroGLUT for App {
         let mut constants_changed = false;
         ui.checkbox("Enable debug mode", &mut self.debug);
 
-        let debug_modes = vec!["Radiance cascades", "Ray marcher"];
+        let debug_modes = vec!["Radiance cascades", "Ray marcher", "Scene", "Depth"];
         if ui.combo_simple_string("Debug mode", &mut self.debug_mode_idx, &debug_modes) {
             match debug_modes[self.debug_mode_idx] {
                 "Radiance cascades" => {
@@ -741,6 +785,12 @@ impl MicroGLUT for App {
                 }
                 "Ray marcher" => {
                     self.debug_mode = DebugMode::RayMarching;
+                }
+                "Scene" => {
+                    self.debug_mode = DebugMode::Scene;
+                }
+                "Depth" => {
+                    self.debug_mode = DebugMode::DepthBuffer;
                 }
                 _ => unreachable!(),
             }

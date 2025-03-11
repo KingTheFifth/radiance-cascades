@@ -97,12 +97,18 @@ bool trace(vec3 ray_start_vs, vec3 direction_vs, out vec3 hit, out float iters) 
 
         //float scene_z_min = textureLod(hi_z_tex, ray_ss.xy * screen_res_inv, 0).x;
         float scene_z_min = texelFetch(hi_z_tex, ivec2(ray_ss.xy), 0).x;
-        out_of_bounds = (scene_z_min == 0.0);
-        scene_z_min = screen_depth_to_view_depth(scene_z_min);
-        float scene_z_max = scene_z_min + 3.0;
+        //out_of_bounds = (scene_z_min == 0.0);
+        if (any(lessThan(ray_ss.xy, vec2(0.0))) || any(greaterThan(ray_ss.xy, screen_res))) {
+            out_of_bounds = true; 
+        }
+        //scene_z_min = screen_depth_to_view_depth(scene_z_min);
+        //float scene_z_max = z_far;
+        //float scene_z_max = scene_z_min + 3.0;
+        float scene_z_max = texelFetch(hi_z_tex, ivec2(ray_ss.xy), 0).y;
 
         //bool collides = (min_depth <= ray_vs.z && (max_depth+3.0) >= ray_vs.z);
-        bool collides = (ray_vs.z >= scene_z_min && ray_vs.z <= scene_z_max);
+        bool collides = (ray_ss.z >= scene_z_min && ray_ss.z <= scene_z_max);
+        //bool collides = (ray_ss.z >= scene_z_min);
         if (collides) {
             hit = ray_ss;
             return true;
@@ -126,5 +132,6 @@ void main() {
     bool hit = trace(ray_start_vs, direction_vs, hit_point, iters);
     vec4 hit_color = (!hit) ? vec4(0.0, 0.5, 0.5, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
 
-    color = hit_color;
+    const vec3 albedo = texture(scene_albedo, tex_coord).rgb;
+    color = ((any(greaterThan(albedo, vec3(0.99)))) ? hit_color : vec4(albedo, 1.0));
 }

@@ -6,6 +6,7 @@ out vec4 color;
 uniform sampler2D merged_cascade_0;
 uniform sampler2D scene_normal;
 uniform sampler2D scene_albedo;
+uniform sampler2D scene_emissive;
 
 layout(std430) readonly buffer Constants {
     vec2 screen_res;
@@ -73,8 +74,10 @@ void main() {
         ));
 
         radiance += (r1 * dot(r1_dir, normal) + r2 * dot(r2_dir, normal));
+        //radiance += r1 + r2;
     }
     vec4 albedo = texture(scene_albedo, tex_coord);
-    color = vec4(srgb_to_linear(albedo.rgb * radiance), albedo.a);
+    vec3 emissive = texture(scene_emissive, tex_coord).rgb;
+    color = vec4(srgb_to_linear(albedo.rgb * radiance + emissive), albedo.a);
     //color = vec4(srgb_to_linear(texture(merged_cascade_0, tex_coord).rgb), 1.0);
 }
