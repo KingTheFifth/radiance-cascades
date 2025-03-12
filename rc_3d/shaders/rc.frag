@@ -206,8 +206,7 @@ vec4 trace_radiance(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
     float iters = 0.0;
     bool missed = trace(ray_start_ss, ray_end_ss, iters, hit_point_ss);
     // Alpha channel tracks occlusion such that 0.0 means the ray hit an occluder
-    return missed ? vec4(vec3(0.0, 0.2, 0.2), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
-    //return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
+    return missed ? vec4(vec3(0.0, 0.2, 0.2), 0.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
     //return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
 }
 
@@ -240,19 +239,34 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
         return vec4(radiance.rgb, 1.0 - radiance.a);
     }
 
-    const vec2 prev_num_dirs = vec2(
+    // (Number of azimuthal directions increase by 2 each higher cascade, altitudinal stay the same)
+    const vec2 upper_cascade_num_dirs = vec2(
         4.0 * pow(2.0, cascade_index + 1.0),
         4.0
     );
 
-    const vec2 prev_dir_block_size = floor(screen_res / (c0_probe_spacing * pow(2.0, cascade_index + 1.0)));
-    const vec2 prev_cascade_res = prev_num_dirs * prev_dir_block_size;
+    // (Number of probes decrease by 2 each higher cascade)
+    const vec2 upper_cascade_probe_count = floor(screen_res / (c0_probe_spacing * pow(2.0, cascade_index + 1.0)));
+    const vec2 upper_cascade_res = upper_cascade_num_dirs * upper_cascade_probe_count;
+    const vec2 upper_cascade_res_inv = 1.0 / upper_cascade_res;
     // Calculate bottom-left pixel of the direction block of the higher cascade to merge with
     //vec2 prev_dir_block_index = vec2(dir_index, )
-    vec2 interpolation_point = dir_index * prev_dir_block_size;
-    // Add an offset to interpolate from the 4 closest probes in the higher cascade
-    interpolation_point += clamp(0.5 * coord_within_block + 0.25, vec2(0.5), prev_dir_block_size - 0.5);
-    return radiance += texture(prev_cascade, interpolation_point * (1.0 / prev_cascade_res));
+
+    
+    // Merge this ray direction with the two closest directions in the upper cascade
+    vec4 upper_radiance = vec4(0.0);
+    for (float i = 0.0; i < 2.0; i++) {
+        vec2 branched_dir_index = dir_index * vec2(2.0, 1.0);
+        vec2 interpolation_point = branched_dir_index * upper_cascade_probe_count; // Bottom left probe texel
+
+        // Get the texel of the closest probe in the higher cascade and add an offset to interpolate
+        // from the 4 closest probes in the higher cascade
+        // TODO: bilateral interpolation by depth
+        interpolation_point += clamp(0.5 * coord_within_block + 0.25, vec2(0.5), upper_cascade_probe_count- 0.5);
+        upper_radiance += texture(prev_cascade, interpolation_point * upper_cascade_res_inv);
+    }
+    // TODO: Should the upper radiance (and occlusion?) be divided by the number of upper rays to merge with?
+    return radiance + upper_radiance * vec4(vec3(0.5), 1.0);
 }
 
 void main() {
@@ -279,34 +293,26 @@ void main() {
     const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(screen_pos_to_view_pos(min_probe_pos_ss).xyz, 1.0)).xyz;
     //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
-    color = vec4(0.0);
-    
-
     if (min_probe_pos_ss.z >= 0.99999) {
         // Do not calculate probes placed in the sky/out of bounds
+        color = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }
 
-    for (float i = 0.0; i < 1.0; i++) {
-        const float preavg_azimuth_index = dir_block_index.x * 2.0 + i;
-        const float ray_azimuth = (preavg_azimuth_index + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays * 1.0));
-        const float ray_altitude = altitudes[int(dir_block_index.y)];
+    const float ray_azimuth = (dir_block_index.x + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays * 1.0));
+    const float ray_altitude = altitudes[int(dir_block_index.y)];
+    const vec3 ray_dir_ws = normalize(vec3(
+        cos(ray_azimuth)*sin(ray_altitude),
+        cos(ray_altitude),
+        sin(ray_azimuth)*sin(ray_altitude)
+    )); //TODO: invert sign of some component?
 
-        const vec3 ray_dir_ws = normalize(vec3(
-            cos(ray_azimuth)*sin(ray_altitude),
-            cos(ray_altitude),
-            sin(ray_azimuth)*sin(ray_altitude)
-        )); //TODO: invert sign of some component?
-
-        // TODO: Trace both min and max depth probes at the same time somehow
-        const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
-        //const vec3 ray_max_start = probe_pos_max + ray_dir * interval_start;
-
-        //vec4 radiance_min = trace_radiance(ray_start_ws, ray_dir_ws, interval_length);
-        vec4 radiance_min = trace_radiance_naive(ray_start_ws, ray_dir_ws, interval_length);
-        color += radiance_min;
-        //color += merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block) * 1.0;
-    }
+    // TODO: Trace both min and max depth probes at the same time somehow
+    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
+    vec4 radiance_min = trace_radiance(ray_start_ws, ray_dir_ws, interval_length);
+    //vec4 radiance_min = trace_radiance_naive(ray_start_ws, ray_dir_ws, interval_length);
+    //color += radiance_min;
+    color = merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block);
 
 
     //color = vec4(screen_pos_to_view_pos(min_probe_pos_ss).xyz, 1.0);
