@@ -206,9 +206,9 @@ vec4 trace_radiance(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
     float iters = 0.0;
     bool missed = trace(ray_start_ss, ray_end_ss, iters, hit_point_ss);
     // Alpha channel tracks occlusion such that 0.0 means the ray hit an occluder
-    //return missed ? vec4(vec3(0.0, 0.2, 0.2), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
+    return missed ? vec4(vec3(0.0, 0.2, 0.2), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
     //return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
-    return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_albedo, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
+    //return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
 }
 
 vec4 trace_radiance_naive(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
@@ -232,7 +232,7 @@ vec4 trace_radiance_naive(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
             return vec4(linear_to_srgb(texture(scene_emissive, ray_ss.xy * screen_res_inv).rgb), 0.0);
         }
     }
-    return vec4(0.0, 0.2, 0.2, 1.0);
+    return vec4(0.0, 0.0, 0.0, 1.0);
 }
 
 vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within_block) {
@@ -241,14 +241,14 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
     }
 
     const vec2 prev_num_dirs = vec2(
-        2.0 * pow(2.0, cascade_index + 1.0),
+        4.0 * pow(2.0, cascade_index + 1.0),
         4.0
     );
 
     const vec2 prev_dir_block_size = floor(screen_res / (c0_probe_spacing * pow(2.0, cascade_index + 1.0)));
     const vec2 prev_cascade_res = prev_num_dirs * prev_dir_block_size;
     // Calculate bottom-left pixel of the direction block of the higher cascade to merge with
-    vec2 prev_dir_block_index = vec2(dir_index, )
+    //vec2 prev_dir_block_index = vec2(dir_index, )
     vec2 interpolation_point = dir_index * prev_dir_block_size;
     // Add an offset to interpolate from the 4 closest probes in the higher cascade
     interpolation_point += clamp(0.5 * coord_within_block + 0.25, vec2(0.5), prev_dir_block_size - 0.5);
@@ -257,7 +257,7 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
 
 void main() {
     const float num_altitudinal_rays = 4.0;
-    const float num_azimuthal_rays = 2.0 * pow(2.0, cascade_index);
+    const float num_azimuthal_rays = 4.0 * pow(2.0, cascade_index);
 
     const vec2 probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index));
     const vec2 probe_count = floor(screen_res / probe_spacing); // This is also the size of a direction block
@@ -287,9 +287,9 @@ void main() {
         return;
     }
 
-    for (float i = 0.0; i < 2.0; i++) {
+    for (float i = 0.0; i < 1.0; i++) {
         const float preavg_azimuth_index = dir_block_index.x * 2.0 + i;
-        const float ray_azimuth = (preavg_azimuth_index + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays * 2.0));
+        const float ray_azimuth = (preavg_azimuth_index + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays * 1.0));
         const float ray_altitude = altitudes[int(dir_block_index.y)];
 
         const vec3 ray_dir_ws = normalize(vec3(
@@ -304,12 +304,12 @@ void main() {
 
         //vec4 radiance_min = trace_radiance(ray_start_ws, ray_dir_ws, interval_length);
         vec4 radiance_min = trace_radiance_naive(ray_start_ws, ray_dir_ws, interval_length);
-        color += radiance_min * 0.5;
-        //color += merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block) * 0.5;
+        color += radiance_min;
+        //color += merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block) * 1.0;
     }
 
 
-    //color = vec4(screen_pos_to_view_pos(probe_pos_min).xyz, 1.0);
+    //color = vec4(screen_pos_to_view_pos(min_probe_pos_ss).xyz, 1.0);
     //color = vec4(dir_block_index / vec2(num_azimuthal_rays, num_altitudinal_rays), 0.0, 1.0);
     //color = vec4(coord_within_dir_block / probe_count, 0.0, 1.0);
 }

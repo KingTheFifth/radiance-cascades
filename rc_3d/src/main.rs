@@ -433,7 +433,7 @@ impl App {
                 gl.viewport(
                     0,
                     0,
-                    self.screen_width * 2,
+                    self.screen_width * 4,
                     (self.screen_height as f32 * 4.0 / 2.0_f32.powi(n)) as _,
                 );
                 self.cascades.bind_cascade_as_output(gl, n as _);
@@ -508,7 +508,7 @@ impl MicroGLUT for App {
         let interval_length = Vec2::ZERO.distance(Vec2::new(probe_spacing, probe_spacing)) * 0.5;
         let probe_spacing_adjusted = ceil_to_power_of_n(probe_spacing, 2.0);
         let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
-        let cascade_width = 2.0 * (screen_width as f32) / probe_spacing_adjusted;
+        let cascade_width = 4.0 * (screen_width as f32) / probe_spacing_adjusted;
         let cascade_height = 4.0 * (screen_height as f32) / probe_spacing_adjusted;
         //let num_cascades = Vec2::ZERO.distance(screen_dims).log(4.0).ceil();
         let num_cascades = 4.0;
@@ -736,8 +736,13 @@ impl MicroGLUT for App {
                 Keycode::S => -self.cam_look_direction,
                 Keycode::A => -cam_right,
                 Keycode::D => cam_right,
-                Keycode::SPACE => Vec3::Y,
-                Keycode::LSHIFT => Vec3::NEG_Y,
+                Keycode::SPACE => {
+                    if keymod == Mod::LSHIFTMOD {
+                        -Vec3::Y
+                    } else {
+                        Vec3::Y
+                    }
+                }
                 _ => Vec3::ZERO,
             };
             self.cam_position += direction * delta_time();
