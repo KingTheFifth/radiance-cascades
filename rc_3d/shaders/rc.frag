@@ -8,6 +8,8 @@ uniform sampler2D scene_emissive;
 uniform sampler2D hi_z_tex;
 uniform float cascade_index;
 
+uniform bool merge_cascades;
+
 out vec4 color;
 
 layout(std430) readonly buffer Constants {
@@ -38,7 +40,7 @@ layout(std430) readonly buffer Constants {
 const float DIR_EPS_X = 0.001;
 const float DIR_EPS_Y = 0.001;
 const float DIR_EPS_Z = 0.001;
-const float HI_Z_STEP_EPS = 0.001;
+const float HI_Z_STEP_EPS = 0.01;
 const bool REMAP_DEPTH = false;
 
 const float altitudes[4] = {acos(-0.75), acos(-0.25), acos(0.25), acos(0.75)};
@@ -196,11 +198,11 @@ vec3 srgb_to_linear(vec3 c) {
     return pow(c.rgb, vec3(1.0 / 1.6));
 }
 
-vec4 trace_radiance(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
-    const vec3 ray_end_ws = ray_start_ws + ray_dir_ws * interval_length;
+vec4 trace_radiance(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
+    const vec3 ray_end_vs = ray_start_vs + ray_dir_vs * interval_length;
 
-    const vec3 ray_start_ss = view_pos_to_screen_pos((world_to_view * vec4(ray_start_ws, 1.0)).xyz).xyz;
-    const vec3 ray_end_ss = view_pos_to_screen_pos((world_to_view * vec4(ray_end_ws, 1.0)).xyz).xyz;
+    const vec3 ray_start_ss = view_pos_to_screen_pos(ray_start_vs).xyz;
+    const vec3 ray_end_ss = view_pos_to_screen_pos(ray_end_vs).xyz;
 
     vec3 hit_point_ss = vec3(-1.0, -1.0, 0.0);
     float iters = 0.0;
@@ -210,13 +212,12 @@ vec4 trace_radiance(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
     //return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
 }
 
-vec4 trace_radiance_naive(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
-    vec3 ray_start_vs = (world_to_view * vec4(ray_start_ws, 1.0)).xyz;
-    vec3 ray_end_ws = ray_start_ws + ray_dir_ws * interval_length;
-    vec3 ray_end_vs = (world_to_view * vec4(ray_end_ws, 1.0)).xyz;
-    float step_count = float(20 * (2 << int(cascade_index) + 1));
-    float step_count_inv = 1.0 / step_count;
-    for (float i = 0.0; i < step_count; i += 1.0) {
+vec4 trace_radiance_naive(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
+    vec3 ray_end_vs = ray_start_vs + ray_dir_vs * interval_length;
+
+    float step_count = float(20 * (2 << (int(cascade_index) + 1)));
+    float step_count_inv = 1.0 / (step_count - 1.0);
+    for (float i = 0.0; i < step_count; i++) {
         float traveled_distance = i * step_count_inv;
         vec3 ray_vs = mix(ray_start_vs, ray_end_vs, traveled_distance);
         vec3 ray_ss = view_pos_to_screen_pos(ray_vs).xyz;
@@ -290,7 +291,8 @@ void main() {
 
     const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
     const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
-    const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(screen_pos_to_view_pos(min_probe_pos_ss).xyz, 1.0)).xyz;
+    const vec4 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss);
+    const vec3 min_probe_pos_ws = (world_to_view_inv * min_probe_pos_vs).xyz;
     //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
     if (min_probe_pos_ss.z >= 0.99999) {
@@ -306,16 +308,24 @@ void main() {
         cos(ray_altitude),
         sin(ray_azimuth)*sin(ray_altitude)
     )); //TODO: invert sign of some component?
+    const vec3 ray_dir_vs = normalize(mat3(world_to_view) * vec3(
+        cos(ray_azimuth)*sin(ray_altitude),
+        cos(ray_altitude),
+        sin(ray_azimuth)*sin(ray_altitude)
+    )); //TODO: invert sign of some component?
 
     // TODO: Trace both min and max depth probes at the same time somehow
     const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
-    vec4 radiance_min = trace_radiance(ray_start_ws, ray_dir_ws, interval_length);
+    const vec3 ray_start_vs = min_probe_pos_vs.xyz + ray_dir_vs * interval_start;
+    vec4 radiance_min = trace_radiance(ray_start_vs, ray_dir_vs, interval_length);
     //vec4 radiance_min = trace_radiance_naive(ray_start_ws, ray_dir_ws, interval_length);
-    //color += radiance_min;
-    color = merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block);
 
+    vec4 unmerged_radiance = radiance_min;
+    vec4 merged_radiance = merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block);
+    color = merge_cascades ? merged_radiance : unmerged_radiance;
 
     //color = vec4(screen_pos_to_view_pos(min_probe_pos_ss).xyz, 1.0);
     //color = vec4(dir_block_index / vec2(num_azimuthal_rays, num_altitudinal_rays), 0.0, 1.0);
     //color = vec4(coord_within_dir_block / probe_count, 0.0, 1.0);
+    //color = vec4(ray_dir_vs, 1.0);
 }

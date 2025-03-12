@@ -15,7 +15,7 @@ void main() {
 
     if (level == 0) {
         float depth = texelFetch(depth_tex, pixel_coord, 0).r;
-        color = vec2(depth, depth + 0.015);
+        color = vec2(depth, depth + 0.005);
         return;
     }
 

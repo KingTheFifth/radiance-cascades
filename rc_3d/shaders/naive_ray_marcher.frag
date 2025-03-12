@@ -97,16 +97,11 @@ bool trace(vec3 ray_start_vs, vec3 direction_vs, out vec3 hit, out float iters) 
 
         //float scene_z_min = textureLod(hi_z_tex, ray_ss.xy * screen_res_inv, 0).x;
         float scene_z_min = texelFetch(hi_z_tex, ivec2(ray_ss.xy), 0).x;
-        //out_of_bounds = (scene_z_min == 0.0);
         if (any(lessThan(ray_ss.xy, vec2(0.0))) || any(greaterThan(ray_ss.xy, screen_res))) {
             out_of_bounds = true; 
         }
-        //scene_z_min = screen_depth_to_view_depth(scene_z_min);
-        //float scene_z_max = z_far;
-        //float scene_z_max = scene_z_min + 3.0;
         float scene_z_max = texelFetch(hi_z_tex, ivec2(ray_ss.xy), 0).y;
 
-        //bool collides = (min_depth <= ray_vs.z && (max_depth+3.0) >= ray_vs.z);
         bool collides = (ray_ss.z >= scene_z_min && ray_ss.z <= scene_z_max);
         //bool collides = (ray_ss.z >= scene_z_min);
         if (collides) {
@@ -118,14 +113,12 @@ bool trace(vec3 ray_start_vs, vec3 direction_vs, out vec3 hit, out float iters) 
 }
 
 void main() {
-    vec3 ray_start = vec3(gl_FragCoord.xy, texture(hi_z_tex, tex_coord).x);
+    vec3 ray_start = vec3(gl_FragCoord.xy, textureLod(hi_z_tex, tex_coord, 0).x);
     vec3 normal_vs = octahedral_decode(texture(scene_normal, tex_coord).xy);
     vec3 ray_start_vs = screen_pos_to_view_pos(ray_start).xyz;
 
     vec3 view_ray_vs = normalize(ray_start_vs);
     vec3 direction_vs = reflect(view_ray_vs, normal_vs);
-    vec3 end_point_vs = ray_start_vs + direction_vs * max_ray_distance;
-    vec3 ray_end = view_pos_to_screen_pos(end_point_vs).xyz;
 
     vec3 hit_point = vec3(-1.0, -1.0, 0.0);
     float iters = 0.0;
@@ -133,5 +126,5 @@ void main() {
     vec4 hit_color = (!hit) ? vec4(0.0, 0.5, 0.5, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
 
     const vec3 albedo = texture(scene_albedo, tex_coord).rgb;
-    color = ((any(greaterThan(albedo, vec3(0.99)))) ? hit_color : vec4(albedo, 1.0));
+    color = ((albedo.r >= 0.499) ? hit_color : vec4(albedo, 1.0));
 }

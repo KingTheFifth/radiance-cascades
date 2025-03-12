@@ -2,9 +2,8 @@ use microglut::{
     glam::Vec2,
     glow::{
         Context, HasContext, NativeFramebuffer, NativeTexture, CLAMP_TO_EDGE, COLOR_ATTACHMENT0,
-        DEPTH_ATTACHMENT, FRAMEBUFFER, LINEAR, NEAREST, RENDERBUFFER, RGBA, RGBA16F, RGBA32F,
-        TEXTURE_2D, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
-        UNSIGNED_BYTE,
+        FRAMEBUFFER, LINEAR, RGBA, RGBA32F, TEXTURE_2D, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER,
+        TEXTURE_WRAP_S, TEXTURE_WRAP_T, UNSIGNED_BYTE,
     },
 };
 
@@ -18,11 +17,6 @@ impl CascadeFBO {
         unsafe {
             let fb = gl.create_framebuffer().unwrap();
             gl.bind_framebuffer(FRAMEBUFFER, Some(fb));
-
-            //let rb = gl.create_renderbuffer().unwrap();
-            //gl.bind_renderbuffer(RENDERBUFFER, Some(rb));
-            //gl.framebuffer_renderbuffer(FRAMEBUFFER, DEPTH_ATTACHMENT, RENDERBUFFER, Some(rb));
-            //gl.bind_renderbuffer(RENDERBUFFER, None);
 
             let cascades = (0..num_cascades)
                 .into_iter()
@@ -44,13 +38,6 @@ impl CascadeFBO {
                         UNSIGNED_BYTE,
                         None,
                     );
-                    //gl.tex_storage_2d(
-                    //    TEXTURE_2D,
-                    //    0,
-                    //    RGBA16F,
-                    //    c0_res.x as _,
-                    //    (c0_res.y / 2.0_f32.powi(i)) as _,
-                    //);
                     tex
                 })
                 .collect();

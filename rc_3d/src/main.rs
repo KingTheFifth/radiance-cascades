@@ -145,6 +145,7 @@ struct App {
     cam_look_direction: Vec3,
 
     debug_cascade_index: i32,
+    debug_cascades_merged: bool,
     debug: bool,
     debug_mode: DebugMode,
     debug_mode_idx: usize,
@@ -410,12 +411,17 @@ impl App {
                 3,
             );
 
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.rc_program, "merge_cascades")
+                    .as_ref(),
+                self.debug_cascades_merged.into(),
+            );
+
             let constants_ssbo_loc = gl
                 .get_shader_storage_block_index(self.rc_program, "Constants")
                 .unwrap();
             gl.shader_storage_block_binding(self.rc_program, constants_ssbo_loc, 0);
 
-            let num_altitudes = 4;
             for n in (0..self.constants.num_cascades as i32).rev() {
                 gl.uniform_1_f32(
                     gl.get_uniform_location(self.rc_program, "cascade_index")
@@ -433,8 +439,8 @@ impl App {
                 gl.viewport(
                     0,
                     0,
-                    self.screen_width * 4,
-                    (self.screen_height as f32 * 4.0 / 2.0_f32.powi(n)) as _,
+                    self.constants.c0_resolution.x as _,
+                    (self.constants.c0_resolution.y / 2.0_f32.powi(n)) as _,
                 );
                 self.cascades.bind_cascade_as_output(gl, n as _);
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
@@ -504,7 +510,7 @@ impl MicroGLUT for App {
         let screen_height = window.size().1 as i32;
         let screen_dims = Vec2::new(screen_width as _, screen_height as _);
 
-        let probe_spacing = 1.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
+        let probe_spacing = 2.0; // Should be some power of 2^N where N may be either positive or negative. Smaller N yields better quality
         let interval_length = Vec2::ZERO.distance(Vec2::new(probe_spacing, probe_spacing)) * 0.5;
         let probe_spacing_adjusted = ceil_to_power_of_n(probe_spacing, 2.0);
         let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
@@ -589,7 +595,7 @@ impl MicroGLUT for App {
                 Object::new(rock.clone())
                     .with_rotation(Quat::from_rotation_x(-0.2))
                     .with_translation(Vec3::new(0.0, 0.0, 2.0))
-                    .with_albedo(Vec4::new(1.0, 0.2, 0.8, 1.0))
+                    .with_albedo(Vec4::new(0.0, 0.0, 0.0, 1.0))
                     .with_emissive(Vec4::new(4.0, 4.0, 4.0, 1.0)),
                 Object::new(rock.clone())
                     .with_rotation(Quat::from_rotation_x(-1.0))
@@ -635,6 +641,7 @@ impl MicroGLUT for App {
                 cam_position: Vec3::ZERO,
                 cam_look_direction: Vec3::Z,
                 debug_cascade_index: 0,
+                debug_cascades_merged: true,
                 debug: false,
                 debug_mode: DebugMode::RadianceCascades,
                 debug_mode_idx: 0,
@@ -812,6 +819,8 @@ impl MicroGLUT for App {
                     200.0,
                     &mut self.constants.c0_interval_length,
                 );
+            constants_changed = constants_changed
+                || ui.checkbox("Merged cascades", &mut self.debug_cascades_merged);
         }
         if ui.tree_node("Ray marching").is_some() {
             constants_changed = constants_changed
