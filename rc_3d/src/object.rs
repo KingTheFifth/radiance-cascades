@@ -20,7 +20,7 @@ impl Object {
             translation: Vec3::ZERO,
             scale: Vec3::ONE,
             albedo: Vec4::ONE,
-            emissive: Vec4::ZERO,
+            emissive: Vec4::W,
         }
     }
 
