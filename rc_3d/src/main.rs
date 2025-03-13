@@ -11,7 +11,7 @@ use microglut::{
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
         COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, DEBUG_OUTPUT, DEPTH_BUFFER_BIT,
-        DEPTH_TEST, DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR, ONE_MINUS_SRC_ALPHA,
+        DEPTH_TEST, DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA,
         READ_FRAMEBUFFER, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
         TEXTURE2, TEXTURE3, TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
     },
@@ -120,6 +120,7 @@ enum DebugMode {
     RayMarching,
     DepthBuffer,
     Scene,
+    Voxel,
 }
 
 struct App {
@@ -553,6 +554,8 @@ impl MicroGLUT for App {
         };
 
         unsafe {
+            gl.enable(MULTISAMPLE);
+
             let quad_vao = gl.create_vertex_array().unwrap();
             gl.bind_vertex_array(Some(quad_vao));
 
@@ -737,6 +740,9 @@ impl MicroGLUT for App {
                         LINEAR as _,
                     );
                 },
+                DebugMode::Voxel => {
+                    self.voxelizer.blit_to_screen(gl, self.constants.screen_res);
+                }
             }
         } else {
             self.integrate_radiance(gl);
@@ -805,7 +811,13 @@ impl MicroGLUT for App {
         let mut constants_changed = false;
         ui.checkbox("Enable debug mode", &mut self.debug);
 
-        let debug_modes = vec!["Radiance cascades", "Ray marcher", "Scene", "Depth"];
+        let debug_modes = vec![
+            "Radiance cascades",
+            "Ray marcher",
+            "Scene",
+            "Depth",
+            "Voxel",
+        ];
         if ui.combo_simple_string("Debug mode", &mut self.debug_mode_idx, &debug_modes) {
             match debug_modes[self.debug_mode_idx] {
                 "Radiance cascades" => {
@@ -819,6 +831,9 @@ impl MicroGLUT for App {
                 }
                 "Depth" => {
                     self.debug_mode = DebugMode::DepthBuffer;
+                }
+                "Voxel" => {
+                    self.debug_mode = DebugMode::Voxel;
                 }
                 _ => unreachable!(),
             }

@@ -1,9 +1,10 @@
 use microglut::{
-    glam::{Mat4, Vec3},
+    glam::{Mat4, Vec2, Vec3},
     glow::{
-        Context, HasContext, NativeFramebuffer, NativeProgram, NativeTexture, CLAMP_TO_EDGE,
-        COLOR_ATTACHMENT0, DEPTH_ATTACHMENT, DEPTH_COMPONENT16, FRAMEBUFFER, LINEAR, RENDERBUFFER,
-        RGBA, RGBA16F, RGBA8, TEXTURE_2D, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D, TEXTURE_MAG_FILTER,
+        Context, HasContext, NativeFramebuffer, NativeProgram, NativeTexture, BLEND, CLAMP_TO_EDGE,
+        COLOR_ATTACHMENT0, COLOR_BUFFER_BIT, CULL_FACE, DEPTH_ATTACHMENT, DEPTH_COMPONENT16,
+        DEPTH_TEST, DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, READ_FRAMEBUFFER, RENDERBUFFER, RGBA,
+        RGBA16F, RGBA8, TEXTURE_2D, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D, TEXTURE_MAG_FILTER,
         TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T, UNSIGNED_BYTE,
         WRITE_ONLY,
     },
@@ -96,7 +97,7 @@ impl Voxelizer {
             gl.viewport(0, 0, self.resolution.x as _, self.resolution.y as _);
 
             let world_to_view = Mat4::look_to_rh(Vec3::ZERO, Vec3::Z, Vec3::Y);
-            let projection = Mat4::orthographic_rh(-1., 1., -1., 1., -1., 1.);
+            let projection = Mat4::orthographic_rh(-10., 10., -10., 10., -10., 10.);
 
             gl.uniform_matrix_4_f32_slice(
                 gl.get_uniform_location(self.program, "world_to_view")
@@ -111,6 +112,10 @@ impl Voxelizer {
             );
 
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
+
+            gl.disable(CULL_FACE);
+            gl.disable(DEPTH_TEST);
+            gl.disable(BLEND);
 
             for obj in objects {
                 gl.uniform_matrix_4_f32_slice(
@@ -133,6 +138,30 @@ impl Voxelizer {
             }
 
             gl.bind_framebuffer(FRAMEBUFFER, None);
+            gl.enable(CULL_FACE);
+        }
+    }
+
+    pub fn blit_to_screen(&self, gl: &Context, screen_resolution: Vec2) {
+        unsafe {
+            gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.msaa_fbo));
+            gl.read_buffer(COLOR_ATTACHMENT0);
+            gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
+            gl.viewport(0, 0, screen_resolution.x as _, screen_resolution.y as _);
+            gl.clear(COLOR_BUFFER_BIT);
+            // The blitting dimensions must match when using multisampled FBO
+            gl.blit_framebuffer(
+                0,
+                0,
+                self.resolution.x as _,
+                self.resolution.y as _,
+                0,
+                0,
+                self.resolution.x as _,
+                self.resolution.y as _,
+                COLOR_BUFFER_BIT,
+                LINEAR,
+            );
         }
     }
 }

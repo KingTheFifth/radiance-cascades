@@ -15,6 +15,8 @@ void main() {
     const vec3 face_normal = abs(cross(geom_world_pos[1] - geom_world_pos[0], geom_world_pos[2] - geom_world_pos[0]));
     for (uint i = 0; i < 3; i++) {
         frag_world_pos = geom_world_pos[i];
+        //frag_world_pos = gl_in[i].gl_Position.xyz;
+        //gl_Position = gl_in[i].gl_Position;
         frag_normal = geom_normal[i];
         frag_albedo = geom_albedo[i];
         if (face_normal.x > face_normal.y && face_normal.x > face_normal.z) {
