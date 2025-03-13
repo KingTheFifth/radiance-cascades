@@ -10,10 +10,10 @@ use microglut::{
     glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
-        COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, DEPTH_BUFFER_BIT, DEPTH_TEST,
-        DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
-        SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3,
-        TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
+        COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, DEBUG_OUTPUT, DEPTH_BUFFER_BIT,
+        DEPTH_TEST, DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR, ONE_MINUS_SRC_ALPHA,
+        READ_FRAMEBUFFER, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
+        TEXTURE2, TEXTURE3, TEXTURE_2D, TEXTURE_MAX_LEVEL, TRIANGLES,
     },
     imgui, load_shaders,
     sdl2::{
@@ -24,6 +24,7 @@ use microglut::{
 };
 use object::Object;
 use scene_fbo::SceneFBO;
+use voxelizer::Voxelizer;
 
 fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, message: String) {
     let severity = match severity {
@@ -37,6 +38,7 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
 mod cascade_fbo;
 mod object;
 mod scene_fbo;
+mod voxelizer;
 
 /// Rounds up a number to a power of n.
 /// # Examples
@@ -151,6 +153,8 @@ struct App {
     debug_mode_idx: usize,
 
     mouse_is_down: bool,
+
+    voxelizer: Voxelizer,
 }
 
 impl App {
@@ -192,6 +196,7 @@ impl App {
             gl.enable(DEPTH_TEST);
             gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
 
+            gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.clear_color(0.0, 0.0, 0.0, 0.0);
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
 
@@ -268,6 +273,8 @@ impl App {
                     .as_ref(),
                 0,
             );
+
+            gl.viewport(0, 0, start_dims.x as _, start_dims.y as _);
             self.draw_screen_quad(gl, self.depth_program);
 
             // Calculate each mip-level using the previous one as the input
@@ -355,6 +362,8 @@ impl App {
                 .get_shader_storage_block_index(self.ssrt_program, "Constants")
                 .unwrap();
             gl.shader_storage_block_binding(self.ssrt_program, constants_ssbo_loc, 0);
+
+            gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
             self.draw_screen_quad(gl, self.ssrt_program);
         }
@@ -622,6 +631,8 @@ impl MicroGLUT for App {
             gl.bind_buffer_base(SHADER_STORAGE_BUFFER, 0, Some(constants_ssbo));
             gl.bind_buffer(SHADER_STORAGE_BUFFER, None);
 
+            let voxelizer = Voxelizer::new(gl, Vec3::new(128.0, 128.0, 128.0));
+
             App {
                 quad_vao,
                 quad_vertex_buffer: quad_vbo,
@@ -646,6 +657,7 @@ impl MicroGLUT for App {
                 debug_mode: DebugMode::RadianceCascades,
                 debug_mode_idx: 0,
                 mouse_is_down: false,
+                voxelizer,
             }
         }
     }
@@ -655,6 +667,7 @@ impl MicroGLUT for App {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.calculate_cascades(gl);
+        self.voxelizer.voxelize(gl, &self.objects);
         if self.debug {
             match self.debug_mode {
                 DebugMode::RayMarching => {
@@ -673,6 +686,7 @@ impl MicroGLUT for App {
                         Some(self.cascades.cascades[self.debug_cascade_index as usize]),
                         0,
                     );
+                    gl.viewport(0, 0, self.screen_width, self.screen_height);
                     gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
                     gl.blit_framebuffer(
                         0,
@@ -691,6 +705,7 @@ impl MicroGLUT for App {
                     gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
                     gl.read_buffer(COLOR_ATTACHMENT3);
                     gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
+                    gl.viewport(0, 0, self.screen_width, self.screen_height);
                     gl.blit_framebuffer(
                         0,
                         0,
@@ -708,6 +723,7 @@ impl MicroGLUT for App {
                     gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
                     gl.read_buffer(COLOR_ATTACHMENT0);
                     gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
+                    gl.viewport(0, 0, self.screen_width, self.screen_height);
                     gl.blit_framebuffer(
                         0,
                         0,
