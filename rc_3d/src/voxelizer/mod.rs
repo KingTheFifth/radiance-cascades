@@ -12,7 +12,7 @@ use microglut::{
     LoadShaders,
 };
 
-use crate::{object::Object, quad_renderer::QuadRenderer};
+use crate::{camera::Camera, object::Object, quad_renderer::QuadRenderer};
 
 pub struct Voxelizer {
     resolution: Vec3,
@@ -153,27 +153,26 @@ impl Voxelizer {
         }
     }
 
-    pub fn visualize(&self, gl: &Context, renderer: &QuadRenderer, screen_resolution: Vec2) {
-        let cam_look_dir = Vec3::Z;
-        let cam_pos = Vec3::ZERO;
-        let mut cam_up = Vec3::Y;
-
-        let cam_forward = (-cam_look_dir).normalize();
-        let cam_right = cam_up.cross(cam_forward).normalize();
-        cam_up = cam_forward.cross(cam_right);
-
+    pub fn visualize(
+        &self,
+        gl: &Context,
+        renderer: &QuadRenderer,
+        camera: &Camera,
+        screen_resolution: Vec2,
+    ) {
         let aspect_ratio = screen_resolution.x / screen_resolution.y;
-        let fov = PI * 0.5;
+        let fov = camera.fov;
         let h = (fov * 0.5).tan();
         let viewport_height = 2.0 * h;
         let viewport_width = viewport_height * aspect_ratio;
 
-        let viewport_u = viewport_width * cam_right;
-        let viewport_v = viewport_height * cam_up;
+        let viewport_u = viewport_width * camera.right();
+        let viewport_v = viewport_height * camera.up();
         let pixel_delta_u = viewport_u * (1.0 / screen_resolution.x);
         let pixel_delta_v = viewport_v * (1.0 / screen_resolution.y);
 
-        let viewport_down_left = cam_pos - cam_forward - 0.5 * (viewport_u + viewport_v);
+        let viewport_down_left =
+            camera.position - camera.forward() - 0.5 * (viewport_u + viewport_v);
         let pixel_down_left = viewport_down_left + 0.5 * (pixel_delta_u + pixel_delta_v);
 
         unsafe {
@@ -185,7 +184,7 @@ impl Voxelizer {
             gl.uniform_3_f32_slice(
                 gl.get_uniform_location(self.visualizing_program, "cam_pos")
                     .as_ref(),
-                cam_pos.as_ref(),
+                camera.position.as_ref(),
             );
             gl.uniform_3_f32_slice(
                 gl.get_uniform_location(self.visualizing_program, "pixel_down_left")

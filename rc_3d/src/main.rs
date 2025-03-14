@@ -4,6 +4,7 @@ extern crate load_file;
 use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
+use camera::Camera;
 use cascade_fbo::CascadeFBO;
 use microglut::{
     delta_time, elapsed_time,
@@ -36,6 +37,7 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
     eprintln!("[{severity}] {message}");
 }
 
+mod camera;
 mod cascade_fbo;
 mod object;
 mod quad_renderer;
@@ -141,8 +143,7 @@ struct App {
     constants: Constants,
     constants_ssbo: NativeBuffer,
 
-    cam_position: Vec3,
-    cam_look_direction: Vec3,
+    camera: Camera,
 
     debug_cascade_index: i32,
     debug_cascades_merged: bool,
@@ -159,16 +160,10 @@ struct App {
 impl App {
     fn draw_scene(&mut self, gl: &Context) {
         unsafe {
-            let fov = PI / 2.0;
             let aspect_ratio = self.screen_width as f32 / self.screen_height as f32;
 
-            let w_t_v = Mat4::look_to_rh(self.cam_position, self.cam_look_direction, Vec3::Y);
-            let perspective_mat = Mat4::perspective_rh(
-                fov,
-                aspect_ratio,
-                self.constants.z_near,
-                self.constants.z_far,
-            );
+            let w_t_v = self.camera.view_transform();
+            let perspective_mat = self.camera.perspective_transform(aspect_ratio);
 
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(self.constants_ssbo));
             gl.buffer_sub_data_u8_slice(SHADER_STORAGE_BUFFER, 0x20, bytemuck::bytes_of(&w_t_v));
@@ -597,6 +592,13 @@ impl MicroGLUT for App {
 
             let quad_renderer = QuadRenderer::new(gl);
             let voxelizer = Voxelizer::new(gl, Vec3::new(128.0, 128.0, 128.0));
+            let camera = Camera::new(
+                Vec3::ZERO,
+                Vec3::Z,
+                PI * 0.5,
+                constants.z_near,
+                constants.z_far,
+            );
 
             App {
                 scene_program,
@@ -611,8 +613,6 @@ impl MicroGLUT for App {
                 screen_height,
                 constants_ssbo,
                 constants,
-                cam_position: Vec3::ZERO,
-                cam_look_direction: Vec3::Z,
                 debug_cascade_index: 0,
                 debug_cascades_merged: true,
                 debug: false,
@@ -621,6 +621,7 @@ impl MicroGLUT for App {
                 mouse_is_down: false,
                 voxelizer,
                 quad_renderer,
+                camera,
             }
         }
     }
@@ -701,8 +702,12 @@ impl MicroGLUT for App {
                     );
                 },
                 DebugMode::Voxel => {
-                    self.voxelizer
-                        .visualize(gl, &self.quad_renderer, self.constants.screen_res);
+                    self.voxelizer.visualize(
+                        gl,
+                        &self.quad_renderer,
+                        &self.camera,
+                        self.constants.screen_res,
+                    );
                 }
             }
         } else {
@@ -720,10 +725,10 @@ impl MicroGLUT for App {
         repeat: bool,
     ) {
         if let Some(kc) = keycode {
-            let cam_right = self.cam_look_direction.cross(Vec3::Y);
+            let cam_right = self.camera.right();
             let direction = match kc {
-                Keycode::W => self.cam_look_direction,
-                Keycode::S => -self.cam_look_direction,
+                Keycode::W => self.camera.look_direction,
+                Keycode::S => -self.camera.look_direction,
                 Keycode::A => -cam_right,
                 Keycode::D => cam_right,
                 Keycode::SPACE => {
@@ -735,7 +740,7 @@ impl MicroGLUT for App {
                 }
                 _ => Vec3::ZERO,
             };
-            self.cam_position += direction * delta_time();
+            self.camera.move_by(direction * delta_time());
         }
     }
 
@@ -759,12 +764,10 @@ impl MicroGLUT for App {
 
     fn mouse_moved_rel(&mut self, xrel: i32, yrel: i32) {
         if self.mouse_is_down {
-            self.cam_look_direction = Mat4::from_quat(
-                (Quat::from_rotation_y(2.0 * -xrel as f32 / self.screen_width as f32)
-                    * Quat::from_rotation_x(2.0 * yrel as f32 / self.screen_height as f32))
-                .normalize(),
-            )
-            .transform_vector3(self.cam_look_direction);
+            let rotation = (Quat::from_rotation_y(2.0 * -xrel as f32 / self.screen_width as f32)
+                * Quat::from_rotation_x(2.0 * yrel as f32 / self.screen_height as f32))
+            .normalize();
+            self.camera.rotate(rotation);
         }
     }
 
