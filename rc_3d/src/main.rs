@@ -23,6 +23,7 @@ use microglut::{
     MicroGLUT, Model, Window,
 };
 use object::Object;
+use quad_renderer::QuadRenderer;
 use scene_fbo::SceneFBO;
 use voxelizer::Voxelizer;
 
@@ -37,6 +38,7 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
 
 mod cascade_fbo;
 mod object;
+mod quad_renderer;
 mod scene_fbo;
 mod voxelizer;
 
@@ -124,11 +126,6 @@ enum DebugMode {
 }
 
 struct App {
-    //TODO: the "quad" is actually a triangle that covers the screen. Rename it accordingly?
-    quad_vao: NativeVertexArray,
-    quad_vertex_buffer: NativeBuffer,
-    quad_texcoord_buffer: NativeBuffer,
-
     scene_program: NativeProgram,
     depth_program: NativeProgram,
     ssrt_program: NativeProgram,
@@ -155,6 +152,7 @@ struct App {
 
     mouse_is_down: bool,
 
+    quad_renderer: QuadRenderer,
     voxelizer: Voxelizer,
 }
 
@@ -276,7 +274,7 @@ impl App {
             );
 
             gl.viewport(0, 0, start_dims.x as _, start_dims.y as _);
-            self.draw_screen_quad(gl, self.depth_program);
+            self.quad_renderer.draw_screen_quad(gl, self.depth_program);
 
             // Calculate each mip-level using the previous one as the input
             gl.bind_texture(TEXTURE_2D, Some(self.scene.hi_z_texture));
@@ -315,7 +313,7 @@ impl App {
                 gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAX_LEVEL, level - 1);
 
                 gl.viewport(0, 0, mip_dims.x as _, mip_dims.y as _);
-                self.draw_screen_quad(gl, self.depth_program);
+                self.quad_renderer.draw_screen_quad(gl, self.depth_program);
             }
 
             // Restore to original value
@@ -366,26 +364,7 @@ impl App {
 
             gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
-            self.draw_screen_quad(gl, self.ssrt_program);
-        }
-    }
-
-    fn draw_screen_quad(&self, gl: &Context, program: NativeProgram) {
-        unsafe {
-            gl.bind_vertex_array(Some(self.quad_vao));
-
-            gl.bind_buffer(ARRAY_BUFFER, Some(self.quad_vertex_buffer));
-            let pos_loc = gl.get_attrib_location(program, "position").unwrap();
-            gl.vertex_attrib_pointer_f32(pos_loc, 3, FLOAT, false, 0, 0);
-            gl.enable_vertex_attrib_array(pos_loc);
-
-            gl.bind_buffer(ARRAY_BUFFER, Some(self.quad_texcoord_buffer));
-            if let Some(texcoord_loc) = gl.get_attrib_location(program, "v_tex_coord") {
-                gl.vertex_attrib_pointer_f32(texcoord_loc, 2, FLOAT, false, 0, 0);
-                gl.enable_vertex_attrib_array(texcoord_loc);
-            }
-
-            gl.draw_arrays(TRIANGLES, 0, 3);
+            self.quad_renderer.draw_screen_quad(gl, self.ssrt_program);
         }
     }
 
@@ -455,7 +434,7 @@ impl App {
                 self.cascades.bind_cascade_as_output(gl, n as _);
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
                 gl.clear(COLOR_BUFFER_BIT);
-                self.draw_screen_quad(gl, self.rc_program);
+                self.quad_renderer.draw_screen_quad(gl, self.rc_program);
             }
 
             gl.viewport(0, 0, self.screen_width, self.screen_height);
@@ -501,21 +480,14 @@ impl App {
 
             gl.viewport(0, 0, self.screen_width, self.screen_height);
             gl.clear(COLOR_BUFFER_BIT);
-            self.draw_screen_quad(gl, self.post_pass_program);
+            self.quad_renderer
+                .draw_screen_quad(gl, self.post_pass_program);
         }
     }
 }
 
 impl MicroGLUT for App {
     fn init(gl: &Context, window: &Window) -> Self {
-        let vertices = [
-            Vec3::new(-1.0, -1.0, 0.0),
-            Vec3::new(3.0, -1.0, 0.0),
-            Vec3::new(-1.0, 3.0, 0.0),
-        ];
-
-        let texcoords = [Vec2::ZERO, Vec2::new(2.0, 0.0), Vec2::new(0.0, 2.0)];
-
         let screen_width = window.size().0 as i32;
         let screen_height = window.size().1 as i32;
         let screen_dims = Vec2::new(screen_width as _, screen_height as _);
@@ -555,17 +527,6 @@ impl MicroGLUT for App {
 
         unsafe {
             gl.enable(MULTISAMPLE);
-
-            let quad_vao = gl.create_vertex_array().unwrap();
-            gl.bind_vertex_array(Some(quad_vao));
-
-            let quad_vbo = gl.create_buffer().unwrap();
-            gl.bind_buffer(ARRAY_BUFFER, Some(quad_vbo));
-            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&vertices), STATIC_DRAW);
-
-            let quad_tex_vbo = gl.create_buffer().unwrap();
-            gl.bind_buffer(ARRAY_BUFFER, Some(quad_tex_vbo));
-            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&texcoords), STATIC_DRAW);
 
             // Load all shaders
             let scene_program =
@@ -634,12 +595,10 @@ impl MicroGLUT for App {
             gl.bind_buffer_base(SHADER_STORAGE_BUFFER, 0, Some(constants_ssbo));
             gl.bind_buffer(SHADER_STORAGE_BUFFER, None);
 
+            let quad_renderer = QuadRenderer::new(gl);
             let voxelizer = Voxelizer::new(gl, Vec3::new(128.0, 128.0, 128.0));
 
             App {
-                quad_vao,
-                quad_vertex_buffer: quad_vbo,
-                quad_texcoord_buffer: quad_tex_vbo,
                 scene_program,
                 depth_program,
                 ssrt_program,
@@ -661,6 +620,7 @@ impl MicroGLUT for App {
                 debug_mode_idx: 0,
                 mouse_is_down: false,
                 voxelizer,
+                quad_renderer,
             }
         }
     }
@@ -741,7 +701,8 @@ impl MicroGLUT for App {
                     );
                 },
                 DebugMode::Voxel => {
-                    self.voxelizer.blit_to_screen(gl, self.constants.screen_res);
+                    self.voxelizer
+                        .visualize(gl, &self.quad_renderer, self.constants.screen_res);
                 }
             }
         } else {
