@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use microglut::{
-    glam::{Mat4, Vec2, Vec3},
+    glam::{Mat4, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeTexture,
         NativeVertexArray, ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
@@ -22,6 +22,7 @@ pub struct Voxelizer {
     voxelizer_program: NativeProgram,
     visualizing_program: NativeProgram,
     instanced_visualizing_program: NativeProgram,
+    clear_program: NativeProgram,
     cube_renderer: CubeRenderer,
 
     // An MSAA render target is needed for an approximation of conservative rasterization
@@ -46,6 +47,10 @@ impl Voxelizer {
                 include_str!("voxel_instanced.frag"),
             )
             .compile(gl);
+
+            let clear_program =
+                LoadShaders::new(include_str!("clear.vert"), include_str!("clear.frag"))
+                    .compile(gl);
 
             let voxel_texture = gl.create_texture().unwrap();
             gl.bind_texture(TEXTURE_3D, Some(voxel_texture));
@@ -106,9 +111,46 @@ impl Voxelizer {
                 voxelizer_program,
                 visualizing_program,
                 instanced_visualizing_program,
+                clear_program,
                 msaa_fbo,
                 cube_renderer,
             }
+        }
+    }
+
+    pub fn clear_voxels(&self, gl: &Context, clear_color: Vec4) {
+        unsafe {
+            gl.use_program(Some(self.clear_program));
+            gl.viewport(0, 0, self.resolution.x as _, self.resolution.y as _);
+
+            gl.bind_framebuffer(FRAMEBUFFER, None);
+            let world_to_view = Mat4::look_to_rh(Vec3::ZERO, Vec3::Z, Vec3::Y);
+            let projection = Mat4::orthographic_rh(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5);
+
+            gl.uniform_matrix_4_f32_slice(
+                gl.get_uniform_location(self.clear_program, "world_to_view")
+                    .as_ref(),
+                false,
+                world_to_view.as_ref(),
+            );
+            gl.uniform_matrix_4_f32_slice(
+                gl.get_uniform_location(self.clear_program, "projection")
+                    .as_ref(),
+                false,
+                projection.as_ref(),
+            );
+            gl.uniform_4_f32_slice(
+                gl.get_uniform_location(self.clear_program, "clear_color")
+                    .as_ref(),
+                clear_color.as_ref(),
+            );
+
+            gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
+            gl.disable(CULL_FACE);
+            gl.disable(DEPTH_TEST);
+            gl.disable(BLEND);
+            self.cube_renderer.draw_instanced(gl, self.clear_program, 1);
+            gl.enable(CULL_FACE);
         }
     }
 
