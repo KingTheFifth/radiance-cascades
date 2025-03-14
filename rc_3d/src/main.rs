@@ -591,7 +591,8 @@ impl MicroGLUT for App {
             gl.bind_buffer(SHADER_STORAGE_BUFFER, None);
 
             let quad_renderer = QuadRenderer::new(gl);
-            let voxelizer = Voxelizer::new(gl, Vec3::new(128.0, 128.0, 128.0));
+            //let voxelizer = Voxelizer::new(gl, Vec3::new(128., 128.0, 128.0));
+            let voxelizer = Voxelizer::new(gl, Vec3::new(10., 10.0, 10.0));
             let camera = Camera::new(
                 Vec3::ZERO,
                 Vec3::Z,
@@ -702,12 +703,14 @@ impl MicroGLUT for App {
                     );
                 },
                 DebugMode::Voxel => {
-                    self.voxelizer.visualize(
-                        gl,
-                        &self.quad_renderer,
-                        &self.camera,
-                        self.constants.screen_res,
-                    );
+                    //self.voxelizer.visualize(
+                    //    gl,
+                    //    &self.quad_renderer,
+                    //    &self.camera,
+                    //    self.constants.screen_res,
+                    //);
+                    self.voxelizer
+                        .visualize_instanced(gl, &self.camera, self.constants.screen_res);
                 }
             }
         } else {

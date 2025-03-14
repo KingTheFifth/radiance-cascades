@@ -18,5 +18,5 @@ void main() {
     geom_world_pos = (model_to_world * vec4(position, 1.0)).xyz;
     geom_normal = normalize(mat3(model_to_world) * normal);
     geom_albedo = albedo;
-    gl_Position = projection * world_to_view * vec4(geom_world_pos, 1.0);
+    gl_Position = projection*world_to_view * vec4(geom_world_pos, 1.0);
 }
