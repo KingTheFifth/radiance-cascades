@@ -710,6 +710,8 @@ impl MicroGLUT for App {
                     //    self.constants.screen_res,
                     //);
                     self.voxelizer
+                        .clear_voxels(gl, &self.quad_renderer, Vec4::ONE);
+                    self.voxelizer
                         .visualize_instanced(gl, &self.camera, self.constants.screen_res);
                 }
             }
