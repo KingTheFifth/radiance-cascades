@@ -7,9 +7,10 @@ use microglut::{
         NativeVertexArray, ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
         CULL_FACE, DEPTH_ATTACHMENT, DEPTH_BUFFER_BIT, DEPTH_COMPONENT16, DEPTH_TEST,
         DRAW_FRAMEBUFFER, ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, LINEAR, NEAREST, READ_BUFFER,
-        READ_FRAMEBUFFER, READ_ONLY, RENDERBUFFER, RGBA, RGBA16F, RGBA8, STATIC_DRAW, TEXTURE0,
-        TEXTURE_2D_MULTISAMPLE, TEXTURE_3D, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_R,
-        TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
+        READ_FRAMEBUFFER, READ_ONLY, RENDERBUFFER, RGBA, RGBA16, RGBA16F, RGBA8, STATIC_DRAW,
+        TEXTURE0, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER,
+        TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT,
+        WRITE_ONLY,
     },
     LoadShaders,
 };
@@ -164,7 +165,7 @@ impl Voxelizer {
                 projection.as_ref(),
             );
 
-            gl.bind_image_texture(4, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
+            gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
 
             gl.disable(CULL_FACE);
             gl.disable(DEPTH_TEST);
@@ -270,14 +271,7 @@ impl Voxelizer {
                 false,
                 projection.as_ref(),
             );
-
-            gl.active_texture(TEXTURE0);
-            gl.bind_texture(TEXTURE_3D, Some(self.voxel_texture));
-            gl.uniform_1_i32(
-                gl.get_uniform_location(self.visualizing_program, "voxel_tex")
-                    .as_ref(),
-                0,
-            );
+            gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16);
 
             renderer.draw_screen_quad(gl, self.visualizing_program);
         }

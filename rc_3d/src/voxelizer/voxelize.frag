@@ -26,7 +26,7 @@ void main() {
         voxel_pos = frag_world_pos.zxy;
     }
 
-    voxel_pos = 0.5*voxel_pos+ 0.5;
+    voxel_pos.xy = 0.5*voxel_pos.xy+ 0.5;
     imageStore(voxel_tex, ivec3(voxel_pos * imageSize(voxel_tex)), frag_albedo);
     //imageStore(voxel_tex, ivec3(vec3(0.0, 0.0, 0.0) * imageSize(voxel_tex)), vec4(1.0));
     color = vec4(frag_albedo.rgb, 1.0);

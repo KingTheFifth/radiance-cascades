@@ -632,7 +632,7 @@ impl MicroGLUT for App {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.calculate_cascades(gl);
-        self.voxelizer.voxelize(gl, &self.objects);
+        //self.voxelizer.voxelize(gl, &self.objects);
         if self.debug {
             match self.debug_mode {
                 DebugMode::RayMarching => {
@@ -703,14 +703,15 @@ impl MicroGLUT for App {
                     );
                 },
                 DebugMode::Voxel => {
+                    // self.voxelizer
+                    //     .clear_voxels(gl, &self.quad_renderer, Vec4::ONE);
+                    self.voxelizer.voxelize(gl, &self.objects);
                     //self.voxelizer.visualize(
                     //    gl,
                     //    &self.quad_renderer,
                     //    &self.camera,
                     //    self.constants.screen_res,
                     //);
-                    self.voxelizer
-                        .clear_voxels(gl, &self.quad_renderer, Vec4::ONE);
                     self.voxelizer
                         .visualize_instanced(gl, &self.camera, self.constants.screen_res);
                 }
