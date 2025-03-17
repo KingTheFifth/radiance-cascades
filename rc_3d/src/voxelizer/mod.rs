@@ -6,11 +6,11 @@ use microglut::{
         Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeTexture,
         NativeVertexArray, ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
         CULL_FACE, DEPTH_ATTACHMENT, DEPTH_BUFFER_BIT, DEPTH_COMPONENT16, DEPTH_TEST,
-        DRAW_FRAMEBUFFER, ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, LINEAR, NEAREST, READ_BUFFER,
-        READ_FRAMEBUFFER, READ_ONLY, RENDERBUFFER, RGBA, RGBA16, RGBA16F, RGBA8, STATIC_DRAW,
-        TEXTURE0, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER,
-        TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT,
-        WRITE_ONLY,
+        DRAW_FRAMEBUFFER, ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, LINEAR, MAX_3D_TEXTURE_SIZE,
+        NEAREST, READ_BUFFER, READ_FRAMEBUFFER, READ_ONLY, RENDERBUFFER, RGBA, RGBA16, RGBA16F,
+        RGBA8, SHADER_IMAGE_ACCESS_BARRIER_BIT, STATIC_DRAW, TEXTURE0, TEXTURE_2D_MULTISAMPLE,
+        TEXTURE_3D, TEXTURE_DEPTH, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_R,
+        TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
     },
     LoadShaders,
 };
@@ -131,6 +131,11 @@ impl Voxelizer {
                     .as_ref(),
                 clear_color.as_ref(),
             );
+            gl.uniform_3_i32_slice(
+                gl.get_uniform_location(self.clear_program, "voxel_resolution")
+                    .as_ref(),
+                self.resolution.as_ivec3().as_ref(),
+            );
 
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
             gl.disable(CULL_FACE);
@@ -150,8 +155,8 @@ impl Voxelizer {
             gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.viewport(0, 0, self.resolution.x as _, self.resolution.y as _);
 
-            let world_to_view = Mat4::look_to_rh(Vec3::ZERO, Vec3::Z, Vec3::Y);
-            let projection = Mat4::orthographic_rh(-10., 10., -10., 10., -10., 10.);
+            let world_to_view = Mat4::look_to_rh(Vec3::new(0., 0., -1.), Vec3::Z, Vec3::Y);
+            let projection = Mat4::orthographic_rh(-1., 1., -1., 1., 0., 1.);
 
             gl.uniform_matrix_4_f32_slice(
                 gl.get_uniform_location(self.voxelizer_program, "world_to_view")
@@ -164,6 +169,11 @@ impl Voxelizer {
                     .as_ref(),
                 false,
                 projection.as_ref(),
+            );
+            gl.uniform_3_i32_slice(
+                gl.get_uniform_location(self.voxelizer_program, "voxel_resolution")
+                    .as_ref(),
+                self.resolution.as_ivec3().as_ref(),
             );
 
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
@@ -196,6 +206,7 @@ impl Voxelizer {
 
             gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.enable(CULL_FACE);
+            gl.memory_barrier(SHADER_IMAGE_ACCESS_BARRIER_BIT);
         }
     }
 
