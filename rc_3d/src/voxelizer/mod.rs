@@ -146,7 +146,8 @@ impl Voxelizer {
     pub fn voxelize(&self, gl: &Context, objects: &Vec<Object>) {
         unsafe {
             gl.use_program(Some(self.voxelizer_program));
-            gl.bind_framebuffer(FRAMEBUFFER, Some(self.msaa_fbo));
+            //gl.bind_framebuffer(FRAMEBUFFER, Some(self.msaa_fbo));
+            gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.viewport(0, 0, self.resolution.x as _, self.resolution.y as _);
 
             let world_to_view = Mat4::look_to_rh(Vec3::ZERO, Vec3::Z, Vec3::Y);
@@ -171,6 +172,7 @@ impl Voxelizer {
             gl.disable(DEPTH_TEST);
             gl.disable(BLEND);
 
+            gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
             for obj in objects {
                 gl.uniform_matrix_4_f32_slice(
                     gl.get_uniform_location(self.voxelizer_program, "model_to_world")
@@ -309,12 +311,14 @@ impl Voxelizer {
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
             gl.enable(CULL_FACE);
             gl.enable(DEPTH_TEST);
+            gl.enable(BLEND);
             self.cube_renderer.draw_instanced(
                 gl,
                 self.instanced_visualizing_program,
                 (self.resolution.x * self.resolution.y * self.resolution.z) as _,
             );
             gl.disable(DEPTH_TEST);
+            gl.disable(BLEND);
         }
     }
 }
