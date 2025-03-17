@@ -6,11 +6,10 @@ use microglut::{
         Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeTexture,
         NativeVertexArray, ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
         CULL_FACE, DEPTH_ATTACHMENT, DEPTH_BUFFER_BIT, DEPTH_COMPONENT16, DEPTH_TEST,
-        DRAW_FRAMEBUFFER, ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, LINEAR, MAX_3D_TEXTURE_SIZE,
-        NEAREST, READ_BUFFER, READ_FRAMEBUFFER, READ_ONLY, RENDERBUFFER, RGBA, RGBA16, RGBA16F,
-        RGBA8, SHADER_IMAGE_ACCESS_BARRIER_BIT, STATIC_DRAW, TEXTURE0, TEXTURE_2D_MULTISAMPLE,
-        TEXTURE_3D, TEXTURE_DEPTH, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_R,
-        TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
+        ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, NEAREST, READ_ONLY, RENDERBUFFER, RGBA, RGBA16,
+        RGBA16F, RGBA8, STATIC_DRAW, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D, TEXTURE_MAG_FILTER,
+        TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES,
+        UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
     },
     LoadShaders,
 };
@@ -151,24 +150,31 @@ impl Voxelizer {
     pub fn voxelize(&self, gl: &Context, objects: &Vec<Object>) {
         unsafe {
             gl.use_program(Some(self.voxelizer_program));
-            //gl.bind_framebuffer(FRAMEBUFFER, Some(self.msaa_fbo));
-            gl.bind_framebuffer(FRAMEBUFFER, None);
+            gl.bind_framebuffer(FRAMEBUFFER, Some(self.msaa_fbo));
             gl.viewport(0, 0, self.resolution.x as _, self.resolution.y as _);
 
-            let world_to_view = Mat4::look_to_rh(Vec3::new(0., 0., -1.), Vec3::Z, Vec3::Y);
-            let projection = Mat4::orthographic_rh(-1., 1., -1., 1., 0., 1.);
+            let projection = Mat4::orthographic_rh(-5., 5., -5., 5., 0., 10.);
+            let projection_x = projection * Mat4::look_at_rh(Vec3::X * -5.0, Vec3::ZERO, Vec3::Y);
+            let projection_y = projection * Mat4::look_at_rh(Vec3::Y * -5.0, Vec3::ZERO, Vec3::Z);
+            let projection_z = projection * Mat4::look_at_rh(Vec3::Z * 5.0, Vec3::ZERO, Vec3::Y);
 
             gl.uniform_matrix_4_f32_slice(
-                gl.get_uniform_location(self.voxelizer_program, "world_to_view")
+                gl.get_uniform_location(self.voxelizer_program, "projection_x")
                     .as_ref(),
                 false,
-                world_to_view.as_ref(),
+                projection_x.as_ref(),
             );
             gl.uniform_matrix_4_f32_slice(
-                gl.get_uniform_location(self.voxelizer_program, "projection")
+                gl.get_uniform_location(self.voxelizer_program, "projection_y")
                     .as_ref(),
                 false,
-                projection.as_ref(),
+                projection_y.as_ref(),
+            );
+            gl.uniform_matrix_4_f32_slice(
+                gl.get_uniform_location(self.voxelizer_program, "projection_z")
+                    .as_ref(),
+                false,
+                projection_z.as_ref(),
             );
             gl.uniform_3_i32_slice(
                 gl.get_uniform_location(self.voxelizer_program, "voxel_resolution")
@@ -182,6 +188,7 @@ impl Voxelizer {
             gl.disable(DEPTH_TEST);
             gl.disable(BLEND);
 
+            gl.color_mask(false, false, false, false);
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
             for obj in objects {
                 gl.uniform_matrix_4_f32_slice(
@@ -206,7 +213,7 @@ impl Voxelizer {
 
             gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.enable(CULL_FACE);
-            gl.memory_barrier(SHADER_IMAGE_ACCESS_BARRIER_BIT);
+            gl.color_mask(true, true, true, true);
         }
     }
 

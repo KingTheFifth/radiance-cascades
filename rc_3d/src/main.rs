@@ -10,12 +10,12 @@ use microglut::{
     delta_time, elapsed_time,
     glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
-        Context, HasContext, NativeBuffer, NativeProgram, NativeVertexArray, ARRAY_BUFFER, BLEND,
-        COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEBUG_OUTPUT,
-        DEBUG_SEVERITY_LOW, DEBUG_SEVERITY_NOTIFICATION, DEPTH_BUFFER_BIT, DEPTH_TEST,
-        DRAW_FRAMEBUFFER, FLOAT, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA,
-        READ_FRAMEBUFFER, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
-        TEXTURE2, TEXTURE3, TEXTURE_2D, TEXTURE_3D, TEXTURE_MAX_LEVEL, TRIANGLES,
+        Context, HasContext, NativeBuffer, NativeProgram, BLEND, COLOR_ATTACHMENT0,
+        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEBUG_SEVERITY_LOW,
+        DEBUG_SEVERITY_NOTIFICATION, DEPTH_BUFFER_BIT, DEPTH_TEST, DRAW_FRAMEBUFFER, FRAMEBUFFER,
+        LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER, SHADER_STORAGE_BUFFER,
+        SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3, TEXTURE_2D,
+        TEXTURE_MAX_LEVEL,
     },
     imgui, load_shaders,
     sdl2::{
@@ -33,8 +33,6 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
     let severity = match severity {
         DEBUG_SEVERITY_MEDIUM => "M",
         DEBUG_SEVERITY_HIGH => "H",
-        DEBUG_SEVERITY_NOTIFICATION => "N",
-        DEBUG_SEVERITY_LOW => "L",
         _ => return,
     };
     eprintln!("[{severity}] {message}");
@@ -564,29 +562,29 @@ impl MicroGLUT for App {
                 None,
             );
 
-            //let objects = vec![
-            //    Object::new(rock.clone())
-            //        .with_rotation(Quat::from_rotation_x(-0.2))
-            //        .with_translation(Vec3::new(0.0, 0.0, 2.0))
-            //        .with_albedo(Vec4::new(0.0, 0.0, 0.0, 1.0))
-            //        .with_emissive(Vec4::new(4.0, 4.0, 4.0, 1.0)),
-            //    Object::new(rock.clone())
-            //        .with_rotation(Quat::from_rotation_x(-1.0))
-            //        .with_translation(Vec3::new(0.5, 0.0, 1.0))
-            //        .with_albedo(Vec4::new(0.0, 0.5, 0.8, 1.0)),
-            //    Object::new(rock.clone())
-            //        .with_rotation(Quat::from_rotation_x(-PI))
-            //        .with_uniform_scale(15.0)
-            //        .with_translation(Vec3::new(0.0, -0.5, 3.0)),
-            //    Object::new(rock.clone())
-            //        .with_rotation(Quat::from_rotation_x(-3.0 * PI / 2.0))
-            //        .with_uniform_scale(15.0)
-            //        .with_translation(Vec3::new(0.0, 0.0, 6.0))
-            //        .with_albedo(Vec4::new(0.5, 0.1, 0.5, 1.0)),
-            //];
-            let objects = vec![Object::new(rock.clone())
-                .with_albedo(Vec4::ONE)
-                .with_uniform_scale(2.0)];
+            let objects = vec![
+                Object::new(rock.clone())
+                    .with_rotation(Quat::from_rotation_x(-0.2))
+                    .with_translation(Vec3::new(0.0, 0.0, 2.0))
+                    .with_albedo(Vec4::new(0.0, 0.0, 0.0, 1.0))
+                    .with_emissive(Vec4::new(4.0, 4.0, 4.0, 1.0)),
+                Object::new(rock.clone())
+                    .with_rotation(Quat::from_rotation_x(-1.0))
+                    .with_translation(Vec3::new(0.5, 0.0, 1.0))
+                    .with_albedo(Vec4::new(0.0, 0.5, 0.8, 1.0)),
+                Object::new(rock.clone())
+                    .with_rotation(Quat::from_rotation_x(-PI))
+                    .with_uniform_scale(15.0)
+                    .with_translation(Vec3::new(0.0, -0.5, 3.0)),
+                Object::new(rock.clone())
+                    .with_rotation(Quat::from_rotation_x(-3.0 * PI / 2.0))
+                    .with_uniform_scale(15.0)
+                    .with_translation(Vec3::new(0.0, 0.0, 6.0))
+                    .with_albedo(Vec4::new(0.5, 0.1, 0.5, 1.0)),
+            ];
+            //let objects = vec![Object::new(rock.clone())
+            //    .with_albedo(Vec4::ONE)
+            //    .with_uniform_scale(2.0)];
 
             let constants_ssbo = gl.create_buffer().unwrap();
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(constants_ssbo));
@@ -642,7 +640,7 @@ impl MicroGLUT for App {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.calculate_cascades(gl);
-        //self.voxelizer.voxelize(gl, &self.objects);
+        self.voxelizer.voxelize(gl, &self.objects);
         if self.debug {
             match self.debug_mode {
                 DebugMode::RayMarching => {
@@ -713,9 +711,6 @@ impl MicroGLUT for App {
                     );
                 },
                 DebugMode::Voxel => {
-                    //self.voxelizer
-                    //    .clear_voxels(gl, &self.quad_renderer, Vec4::ONE);
-                    self.voxelizer.voxelize(gl, &self.objects);
                     //self.voxelizer.visualize(
                     //    gl,
                     //    &self.quad_renderer,
@@ -730,7 +725,7 @@ impl MicroGLUT for App {
             self.integrate_radiance(gl);
         }
         let t_end = elapsed_time();
-        //println!("Time to render: {:?}", t_end - t_start);
+        println!("Time to render: {:?}", t_end - t_start);
     }
 
     fn key_down(

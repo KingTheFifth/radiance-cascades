@@ -5,8 +5,6 @@ in vec3 normal;
 in vec2 tex_coord;
 
 uniform mat4 model_to_world;
-uniform mat4 world_to_view;
-uniform mat4 projection;
 
 uniform vec4 albedo;
 
