@@ -11,11 +11,10 @@ use microglut::{
     glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, BLEND, COLOR_ATTACHMENT0,
-        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEBUG_SEVERITY_LOW,
-        DEBUG_SEVERITY_NOTIFICATION, DEPTH_BUFFER_BIT, DEPTH_TEST, DRAW_FRAMEBUFFER, FRAMEBUFFER,
-        LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER, SHADER_STORAGE_BUFFER,
-        SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3, TEXTURE_2D,
-        TEXTURE_MAX_LEVEL,
+        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEPTH_BUFFER_BIT, DEPTH_TEST,
+        DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
+        SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3,
+        TEXTURE_2D, TEXTURE_MAX_LEVEL,
     },
     imgui, load_shaders,
     sdl2::{
@@ -27,6 +26,7 @@ use microglut::{
 use object::Object;
 use quad_renderer::QuadRenderer;
 use scene_fbo::SceneFBO;
+use strum::{Display, VariantArray};
 use voxelizer::Voxelizer;
 
 fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, message: String) {
@@ -120,6 +120,7 @@ struct Constants {
     pub c0_resolution: Vec2,
 }
 
+#[derive(Display, VariantArray, PartialEq, Clone, Copy)]
 enum DebugMode {
     RadianceCascades,
     RayMarching,
@@ -150,7 +151,6 @@ struct App {
     debug_cascades_merged: bool,
     debug: bool,
     debug_mode: DebugMode,
-    debug_mode_idx: usize,
 
     mouse_is_down: bool,
 
@@ -634,7 +634,6 @@ impl MicroGLUT for App {
                 debug_cascades_merged: true,
                 debug: false,
                 debug_mode: DebugMode::RadianceCascades,
-                debug_mode_idx: 0,
                 mouse_is_down: false,
                 voxelizer,
                 quad_renderer,
@@ -794,33 +793,24 @@ impl MicroGLUT for App {
         let mut constants_changed = false;
         ui.checkbox("Enable debug mode", &mut self.debug);
 
-        let debug_modes = vec![
-            "Radiance cascades",
-            "Ray marcher",
-            "Scene",
-            "Depth",
-            "Voxel",
-        ];
-        if ui.combo_simple_string("Debug mode", &mut self.debug_mode_idx, &debug_modes) {
-            match debug_modes[self.debug_mode_idx] {
-                "Radiance cascades" => {
-                    self.debug_mode = DebugMode::RadianceCascades;
+        if let Some(cb) = ui.begin_combo("Debug mode", self.debug_mode.to_string()) {
+            for cur in DebugMode::VARIANTS {
+                if &self.debug_mode == cur {
+                    ui.set_item_default_focus();
                 }
-                "Ray marcher" => {
-                    self.debug_mode = DebugMode::RayMarching;
+
+                let clicked = ui
+                    .selectable_config(cur.to_string())
+                    .selected(&self.debug_mode == cur)
+                    .build();
+
+                if clicked {
+                    self.debug_mode = *cur;
                 }
-                "Scene" => {
-                    self.debug_mode = DebugMode::Scene;
-                }
-                "Depth" => {
-                    self.debug_mode = DebugMode::DepthBuffer;
-                }
-                "Voxel" => {
-                    self.debug_mode = DebugMode::Voxel;
-                }
-                _ => unreachable!(),
             }
+            cb.end();
         }
+
         if ui.tree_node("Radiance cascades").is_some() {
             constants_changed = constants_changed
                 || ui

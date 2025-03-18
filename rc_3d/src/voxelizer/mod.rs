@@ -1,5 +1,3 @@
-use std::f32::consts::PI;
-
 use microglut::{
     glam::{Mat4, Vec2, Vec3, Vec4},
     glow::{
@@ -375,23 +373,21 @@ impl Voxelizer {
             ui.input_float("Volume half side length", &mut self.volume_half_side)
                 .build();
 
-            let items = VisualizationMode::VARIANTS;
-            let mut selected = &self.visualisation_mode;
-            if let Some(_) = ui.begin_combo("Mode", selected.to_string()) {
-                for cur in items {
-                    if selected == cur {
+            if let Some(cb) = ui.begin_combo("Mode", self.visualisation_mode.to_string()) {
+                for cur in VisualizationMode::VARIANTS {
+                    if &self.visualisation_mode == cur {
                         ui.set_item_default_focus();
                     }
                     let clicked = ui
                         .selectable_config(cur.to_string())
-                        .selected(selected == cur)
+                        .selected(&self.visualisation_mode == cur)
                         .build();
                     if clicked {
-                        selected = cur;
+                        self.visualisation_mode = *cur;
                     }
                 }
+                cb.end();
             }
-            self.visualisation_mode = *selected;
         }
     }
 }
