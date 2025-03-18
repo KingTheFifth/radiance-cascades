@@ -648,7 +648,7 @@ impl MicroGLUT for App {
         self.generate_hi_z_buffer(gl);
         self.calculate_cascades(gl);
         self.voxelizer
-            .clear_voxels(gl, &self.quad_renderer, Vec4::new(0.0, 0.0, 1.0, 0.00));
+            .clear_voxels(gl, &self.quad_renderer, Vec4::new(0.0, 0.0, 0.0, 0.0));
         self.voxelizer.voxelize(gl, &self.objects);
         if self.debug {
             match self.debug_mode {

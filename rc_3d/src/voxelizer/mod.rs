@@ -24,12 +24,16 @@ pub struct Voxelizer {
     resolution: Vec3,
     origin: Vec3,
     volume_half_side: f32,
+
     voxel_texture: NativeTexture,
     voxelizer_program: NativeProgram,
-    visualizing_program: NativeProgram,
     instanced_visualizing_program: NativeProgram,
     clear_program: NativeProgram,
     cube_renderer: CubeRenderer,
+
+    tracer_program: NativeProgram,
+    tracer_step_length: f32,
+    tracer_step_count: f32,
 
     // Debug information
     visualisation_mode: VisualizationMode,
@@ -121,13 +125,15 @@ impl Voxelizer {
                 volume_half_side,
                 voxel_texture,
                 voxelizer_program,
-                visualizing_program,
+                tracer_program: visualizing_program,
                 instanced_visualizing_program,
                 clear_program,
                 msaa_fbo,
                 cube_renderer,
                 visualisation_mode: VisualizationMode::Instanced,
                 use_msaa: true,
+                tracer_step_count: 400.0,
+                tracer_step_length: 0.05,
             }
         }
     }
@@ -271,46 +277,62 @@ impl Voxelizer {
             self.volume_half_side,
         );
         let projection_z = projection * Mat4::look_to_rh(self.origin, Vec3::NEG_Z, Vec3::Y);
-        let world_to_voxel =
-            Mat4::from_cols(Vec4::X, Vec4::Y, Vec4::NEG_Z, Vec4::new(0.0, 0.0, 1.0, 1.0))
-                * projection_z;
+        //* Mat4::from_scale(Vec3::new(self.resolution.x, self.resolution.y, 1.0));
+        let world_to_voxel = Mat4::from_scale(self.resolution)
+            * Mat4::from_cols(
+                Vec4::X * 0.5,
+                Vec4::Y * 0.5,
+                Vec4::NEG_Z * 1.0,
+                Vec4::new(0.5, 0.5, 1.0, 1.0),
+            )
+            * projection_z;
 
         unsafe {
-            gl.use_program(Some(self.visualizing_program));
+            gl.use_program(Some(self.tracer_program));
             gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.viewport(0, 0, screen_resolution.x as _, screen_resolution.y as _);
             gl.clear(COLOR_BUFFER_BIT);
 
             gl.uniform_3_f32_slice(
-                gl.get_uniform_location(self.visualizing_program, "cam_pos")
+                gl.get_uniform_location(self.tracer_program, "cam_pos")
                     .as_ref(),
                 camera.position.as_ref(),
             );
             gl.uniform_3_f32_slice(
-                gl.get_uniform_location(self.visualizing_program, "pixel_down_left")
+                gl.get_uniform_location(self.tracer_program, "pixel_down_left")
                     .as_ref(),
                 pixel_down_left.as_ref(),
             );
             gl.uniform_3_f32_slice(
-                gl.get_uniform_location(self.visualizing_program, "pixel_delta_u")
+                gl.get_uniform_location(self.tracer_program, "pixel_delta_u")
                     .as_ref(),
                 pixel_delta_u.as_ref(),
             );
             gl.uniform_3_f32_slice(
-                gl.get_uniform_location(self.visualizing_program, "pixel_delta_v")
+                gl.get_uniform_location(self.tracer_program, "pixel_delta_v")
                     .as_ref(),
                 pixel_delta_v.as_ref(),
             );
             gl.uniform_matrix_4_f32_slice(
-                gl.get_uniform_location(self.visualizing_program, "world_to_voxel")
+                gl.get_uniform_location(self.tracer_program, "world_to_voxel")
                     .as_ref(),
                 false,
                 world_to_voxel.as_ref(),
             );
+            gl.uniform_1_f32(
+                gl.get_uniform_location(self.tracer_program, "step_length")
+                    .as_ref(),
+                self.tracer_step_length,
+            );
+            gl.uniform_1_f32(
+                gl.get_uniform_location(self.tracer_program, "step_count")
+                    .as_ref(),
+                self.tracer_step_count,
+            );
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16);
 
             gl.enable(BLEND);
-            renderer.draw_screen_quad(gl, self.visualizing_program);
+            renderer.draw_screen_quad(gl, self.tracer_program);
             gl.disable(BLEND);
         }
     }
@@ -377,11 +399,13 @@ impl Voxelizer {
 
     pub fn ui(&mut self, ui: &mut imgui::Ui) {
         if ui.tree_node("Voxelisation").is_some() {
+            ui.separator_with_text("Voxelisation parameters");
             ui.input_float3("Origin", self.origin.as_mut()).build();
             ui.input_float("Volume half side length", &mut self.volume_half_side)
                 .build();
             ui.checkbox("Voxelise with MSAA", &mut self.use_msaa);
 
+            ui.separator_with_text("Voxel volume visualisation mode");
             if let Some(cb) = ui.begin_combo("Mode", self.visualisation_mode.to_string()) {
                 for cur in VisualizationMode::VARIANTS {
                     if &self.visualisation_mode == cur {
@@ -397,6 +421,12 @@ impl Voxelizer {
                 }
                 cb.end();
             }
+
+            ui.separator_with_text("Voxel tracer parameters");
+            ui.input_float("Tracer step length", &mut self.tracer_step_length)
+                .build();
+            ui.input_float("Tracer step count", &mut self.tracer_step_count)
+                .build();
         }
     }
 }
