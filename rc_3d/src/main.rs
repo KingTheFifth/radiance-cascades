@@ -608,7 +608,7 @@ impl MicroGLUT for App {
                 voxel_origin,
                 voxel_volume_half_side,
             );
-            voxelizer.clear_voxels(gl, &quad_renderer, Vec4::new(0., 0., 1., 0.01));
+            voxelizer.clear_voxels(gl, &quad_renderer, Vec4::new(0., 0., 0., 0.0));
             let camera = Camera::new(
                 Vec3::ZERO,
                 Vec3::Z,
