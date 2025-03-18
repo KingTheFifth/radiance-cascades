@@ -11,11 +11,17 @@ use microglut::{
         TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES,
         UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
     },
-    LoadShaders,
+    imgui, LoadShaders,
 };
+use strum::{Display, VariantArray};
 
 use crate::{camera::Camera, object::Object, quad_renderer::QuadRenderer};
 
+#[derive(Display, VariantArray, PartialEq, Copy, Clone)]
+enum VisualizationMode {
+    Instanced,
+    Traced,
+}
 pub struct Voxelizer {
     resolution: Vec3,
     origin: Vec3,
@@ -26,6 +32,7 @@ pub struct Voxelizer {
     instanced_visualizing_program: NativeProgram,
     clear_program: NativeProgram,
     cube_renderer: CubeRenderer,
+    visualisation_mode: VisualizationMode,
 
     // An MSAA render target is needed for an approximation of conservative rasterization
     msaa_fbo: NativeFramebuffer,
@@ -118,6 +125,7 @@ impl Voxelizer {
                 clear_program,
                 msaa_fbo,
                 cube_renderer,
+                visualisation_mode: VisualizationMode::Instanced,
             }
         }
     }
@@ -228,7 +236,7 @@ impl Voxelizer {
         }
     }
 
-    pub fn visualize(
+    pub fn visualize_traced(
         &self,
         gl: &Context,
         renderer: &QuadRenderer,
@@ -250,27 +258,20 @@ impl Voxelizer {
             camera.position - camera.forward() - 0.5 * (viewport_u + viewport_v);
         let pixel_down_left = viewport_down_left + 0.5 * (pixel_delta_u + pixel_delta_v);
 
-        let projection = Mat4::orthographic_rh(-10., 10., -10., 10., -10., 10.);
+        let projection = Mat4::orthographic_rh(
+            -self.volume_half_side,
+            self.volume_half_side,
+            -self.volume_half_side,
+            self.volume_half_side,
+            -self.volume_half_side,
+            self.volume_half_side,
+        );
+        let projection_z = projection * Mat4::look_to_rh(self.origin, Vec3::NEG_Z, Vec3::Y);
+        let world_to_voxel =
+            Mat4::from_cols(Vec4::X, Vec4::Y, Vec4::NEG_Z, Vec4::new(0.0, 0.0, 1.0, 1.0))
+                * projection_z;
 
         unsafe {
-            //gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.msaa_fbo));
-            //gl.read_buffer(COLOR_ATTACHMENT0);
-            //gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
-            //gl.clear(COLOR_BUFFER_BIT);
-            //gl.blit_framebuffer(
-            //    0,
-            //    0,
-            //    screen_resolution.x as _,
-            //    screen_resolution.y as _,
-            //    0,
-            //    0,
-            //    screen_resolution.x as _,
-            //    screen_resolution.y as _,
-            //    COLOR_BUFFER_BIT,
-            //    LINEAR,
-            //);
-            //return;
-
             gl.use_program(Some(self.visualizing_program));
             gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.viewport(0, 0, screen_resolution.x as _, screen_resolution.y as _);
@@ -297,14 +298,16 @@ impl Voxelizer {
                 pixel_delta_v.as_ref(),
             );
             gl.uniform_matrix_4_f32_slice(
-                gl.get_uniform_location(self.visualizing_program, "projection")
+                gl.get_uniform_location(self.visualizing_program, "world_to_voxel")
                     .as_ref(),
                 false,
-                projection.as_ref(),
+                world_to_voxel.as_ref(),
             );
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16);
 
+            gl.enable(BLEND);
             renderer.draw_screen_quad(gl, self.visualizing_program);
+            gl.disable(BLEND);
         }
     }
 
@@ -350,11 +353,53 @@ impl Voxelizer {
             gl.disable(BLEND);
         }
     }
+
+    pub fn visualize(
+        &self,
+        gl: &Context,
+        camera: &Camera,
+        screen_resolution: Vec2,
+        renderer: &QuadRenderer,
+    ) {
+        match self.visualisation_mode {
+            VisualizationMode::Instanced => self.visualize_instanced(gl, camera, screen_resolution),
+            VisualizationMode::Traced => {
+                self.visualize_traced(gl, renderer, camera, screen_resolution)
+            }
+        }
+    }
+
+    pub fn ui(&mut self, ui: &mut imgui::Ui) {
+        if ui.tree_node("Voxelisation").is_some() {
+            ui.input_float3("Origin", self.origin.as_mut()).build();
+            ui.input_float("Volume half side length", &mut self.volume_half_side)
+                .build();
+
+            let items = VisualizationMode::VARIANTS;
+            let mut selected = &self.visualisation_mode;
+            if let Some(_) = ui.begin_combo("Mode", selected.to_string()) {
+                for cur in items {
+                    if selected == cur {
+                        ui.set_item_default_focus();
+                    }
+                    let clicked = ui
+                        .selectable_config(cur.to_string())
+                        .selected(selected == cur)
+                        .build();
+                    if clicked {
+                        selected = cur;
+                    }
+                }
+            }
+            self.visualisation_mode = *selected;
+        }
+    }
 }
 
 struct CubeRenderer {
     vao: NativeVertexArray,
     vbo: NativeBuffer,
+    #[expect(unused)]
     ebo: NativeBuffer,
 }
 

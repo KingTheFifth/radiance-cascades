@@ -9,6 +9,7 @@ bytemuck = { version = "1.19.0", features = ["derive"] }
 stb_image = "0.3.0"
 load_file = "1.0.1"
 tobj = { version = "4.0.2", default-features = false }
+strum = { version = "0.27", features = ["derive"]}
 
 [profile.dev.package.rc_3d]
 opt-level = 2

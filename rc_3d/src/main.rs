@@ -648,6 +648,8 @@ impl MicroGLUT for App {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.calculate_cascades(gl);
+        self.voxelizer
+            .clear_voxels(gl, &self.quad_renderer, Vec4::new(0.0, 0.0, 1.0, 0.00));
         self.voxelizer.voxelize(gl, &self.objects);
         if self.debug {
             match self.debug_mode {
@@ -719,14 +721,12 @@ impl MicroGLUT for App {
                     );
                 },
                 DebugMode::Voxel => {
-                    //self.voxelizer.visualize(
-                    //    gl,
-                    //    &self.quad_renderer,
-                    //    &self.camera,
-                    //    self.constants.screen_res,
-                    //);
-                    self.voxelizer
-                        .visualize_instanced(gl, &self.camera, self.constants.screen_res);
+                    self.voxelizer.visualize(
+                        gl,
+                        &self.camera,
+                        self.constants.screen_res,
+                        &self.quad_renderer,
+                    );
                 }
             }
         } else {
@@ -849,6 +849,8 @@ impl MicroGLUT for App {
                     .input_float("Max step count", &mut self.constants.max_steps)
                     .build();
         }
+
+        self.voxelizer.ui(ui);
 
         if constants_changed {
             unsafe {
