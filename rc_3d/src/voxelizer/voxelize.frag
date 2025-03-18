@@ -21,7 +21,7 @@ void main() {
     //}
 
     vec3 world_pos = vec3(frag_world_pos.xy, 1.0 - frag_world_pos.z) * voxel_resolution;
-    ivec3 voxel_pos = ivec3(gl_FragCoord.xy, gl_FragCoord.z * voxel_resolution.z);
+    ivec3 voxel_pos = ivec3(gl_FragCoord.xy, (gl_FragCoord.z * 2.0 - 1.0) * voxel_resolution.z);
     if (frag_axis == 0) {
         // X
         //world_pos = frag_world_pos.zyx;

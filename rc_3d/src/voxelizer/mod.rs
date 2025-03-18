@@ -18,6 +18,8 @@ use crate::{camera::Camera, object::Object, quad_renderer::QuadRenderer};
 
 pub struct Voxelizer {
     resolution: Vec3,
+    origin: Vec3,
+    volume_half_side: f32,
     voxel_texture: NativeTexture,
     voxelizer_program: NativeProgram,
     visualizing_program: NativeProgram,
@@ -30,7 +32,7 @@ pub struct Voxelizer {
 }
 
 impl Voxelizer {
-    pub fn new(gl: &Context, resolution: Vec3) -> Self {
+    pub fn new(gl: &Context, resolution: Vec3, origin: Vec3, volume_half_side: f32) -> Self {
         unsafe {
             let voxelizer_program =
                 LoadShaders::new(include_str!("voxelize.vert"), include_str!("voxelize.frag"))
@@ -107,6 +109,8 @@ impl Voxelizer {
 
             Self {
                 resolution,
+                origin,
+                volume_half_side,
                 voxel_texture,
                 voxelizer_program,
                 visualizing_program,
@@ -153,10 +157,17 @@ impl Voxelizer {
             gl.bind_framebuffer(FRAMEBUFFER, Some(self.msaa_fbo));
             gl.viewport(0, 0, self.resolution.x as _, self.resolution.y as _);
 
-            let projection = Mat4::orthographic_rh(-5., 5., -5., 5., 0., 10.);
-            let projection_x = projection * Mat4::look_at_rh(Vec3::X * -5.0, Vec3::ZERO, Vec3::Y);
-            let projection_y = projection * Mat4::look_at_rh(Vec3::Y * -5.0, Vec3::ZERO, Vec3::Z);
-            let projection_z = projection * Mat4::look_at_rh(Vec3::Z * 5.0, Vec3::ZERO, Vec3::Y);
+            let projection = Mat4::orthographic_rh(
+                -self.volume_half_side,
+                self.volume_half_side,
+                -self.volume_half_side,
+                self.volume_half_side,
+                -self.volume_half_side,
+                self.volume_half_side,
+            );
+            let projection_x = projection * Mat4::look_to_rh(self.origin, Vec3::X, Vec3::Y);
+            let projection_y = projection * Mat4::look_to_rh(self.origin, Vec3::Y, Vec3::Z);
+            let projection_z = projection * Mat4::look_to_rh(self.origin, Vec3::NEG_Z, Vec3::Y);
 
             gl.uniform_matrix_4_f32_slice(
                 gl.get_uniform_location(self.voxelizer_program, "projection_x")

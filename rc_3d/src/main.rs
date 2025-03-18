@@ -584,6 +584,7 @@ impl MicroGLUT for App {
             ];
             //let objects = vec![Object::new(rock.clone())
             //    .with_albedo(Vec4::ONE)
+            //    .with_translation(Vec3::new(0.0, 0.0, 1.0))
             //    .with_uniform_scale(2.0)];
 
             let constants_ssbo = gl.create_buffer().unwrap();
@@ -599,7 +600,14 @@ impl MicroGLUT for App {
             let quad_renderer = QuadRenderer::new(gl);
             //let voxelizer = Voxelizer::new(gl, Vec3::new(128., 128.0, 128.0));
             let voxel_res = 128.0;
-            let voxelizer = Voxelizer::new(gl, Vec3::new(voxel_res, voxel_res, voxel_res));
+            let voxel_origin = Vec3::new(0.0, 0.0, 4.5);
+            let voxel_volume_half_side = 6.0;
+            let voxelizer = Voxelizer::new(
+                gl,
+                Vec3::new(voxel_res, voxel_res, voxel_res),
+                voxel_origin,
+                voxel_volume_half_side,
+            );
             voxelizer.clear_voxels(gl, &quad_renderer, Vec4::new(0., 0., 1., 0.01));
             let camera = Camera::new(
                 Vec3::ZERO,

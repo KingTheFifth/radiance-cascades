@@ -32,7 +32,7 @@ impl Camera {
     }
 
     pub fn view_transform(&self) -> Mat4 {
-        Mat4::look_to_rh(self.position, self.look_direction, Vec3::Y)
+        Mat4::look_at_rh(self.look_direction * 5.0, Vec3::ZERO, Vec3::Y)
     }
 
     pub fn perspective_transform(&self, aspect_ratio: f32) -> Mat4 {

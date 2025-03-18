@@ -28,16 +28,16 @@ void main() {
         mat4 projection = projection_z;
         frag_axis = 2;
 
-        //if (face_normal.x > face_normal.y && face_normal.x > face_normal.z) {
-        //    // Look from +X
-        //    projection = projection_x;
-        //    frag_axis = 0;
-        //}
-        //else if (face_normal.y > face_normal.x && face_normal.y > face_normal.z) {
-        //    // Look from +Y
-        //    projection = projection_y;
-        //    frag_axis = 1;
-        //}
+        if (face_normal.x > face_normal.y && face_normal.x > face_normal.z) {
+            // Look from +X
+            projection = projection_x;
+            frag_axis = 0;
+        }
+        else if (face_normal.y > face_normal.x && face_normal.y > face_normal.z) {
+            // Look from +Y
+            projection = projection_y;
+            frag_axis = 1;
+        }
 
         // Orthogonal projection to unit cube (NDC)
         gl_Position = projection * frag_world_pos;
