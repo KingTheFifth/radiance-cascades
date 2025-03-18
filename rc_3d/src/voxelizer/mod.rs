@@ -4,10 +4,10 @@ use microglut::{
         Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeTexture,
         NativeVertexArray, ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
         CULL_FACE, DEPTH_ATTACHMENT, DEPTH_BUFFER_BIT, DEPTH_COMPONENT16, DEPTH_TEST,
-        ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, NEAREST, READ_ONLY, RENDERBUFFER, RGBA, RGBA16,
-        RGBA16F, RGBA8, STATIC_DRAW, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D, TEXTURE_MAG_FILTER,
-        TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES,
-        UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
+        ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, LINEAR, NEAREST, READ_ONLY, RENDERBUFFER, RGBA,
+        RGBA16, RGBA16F, RGBA8, STATIC_DRAW, TEXTURE0, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D,
+        TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
+        TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
     },
     imgui, LoadShaders,
 };
@@ -71,8 +71,8 @@ impl Voxelizer {
             gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_WRAP_R, CLAMP_TO_EDGE as _);
             gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_WRAP_S, CLAMP_TO_EDGE as _);
             gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_WRAP_T, CLAMP_TO_EDGE as _);
-            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_MAG_FILTER, NEAREST as _);
-            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_MIN_FILTER, NEAREST as _);
+            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_MAG_FILTER, LINEAR as _);
+            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_MIN_FILTER, LINEAR as _);
             gl.tex_image_3d(
                 TEXTURE_3D,
                 0,
@@ -277,8 +277,7 @@ impl Voxelizer {
             self.volume_half_side,
         );
         let projection_z = projection * Mat4::look_to_rh(self.origin, Vec3::NEG_Z, Vec3::Y);
-        //* Mat4::from_scale(Vec3::new(self.resolution.x, self.resolution.y, 1.0));
-        let world_to_voxel = Mat4::from_scale(self.resolution)
+        let world_to_voxel = Mat4::from_scale(Vec3::ONE)
             * Mat4::from_cols(
                 Vec4::X * 0.5,
                 Vec4::Y * 0.5,
@@ -329,7 +328,15 @@ impl Voxelizer {
                     .as_ref(),
                 self.tracer_step_count,
             );
-            gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16);
+
+            //gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16);
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.tracer_program, "voxel_tex")
+                    .as_ref(),
+                0,
+            );
+            gl.active_texture(TEXTURE0);
+            gl.bind_texture(TEXTURE_3D, Some(self.voxel_texture));
 
             gl.enable(BLEND);
             renderer.draw_screen_quad(gl, self.tracer_program);

@@ -14,7 +14,7 @@ use microglut::{
         COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEPTH_BUFFER_BIT, DEPTH_TEST,
         DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
         SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3,
-        TEXTURE_2D, TEXTURE_MAX_LEVEL,
+        TEXTURE4, TEXTURE_2D, TEXTURE_MAX_LEVEL,
     },
     imgui, load_shaders,
     sdl2::{
@@ -582,10 +582,6 @@ impl MicroGLUT for App {
                     .with_translation(Vec3::new(0.0, 0.0, 6.0))
                     .with_albedo(Vec4::new(0.5, 0.1, 0.5, 1.0)),
             ];
-            //let objects = vec![Object::new(rock.clone())
-            //    .with_albedo(Vec4::ONE)
-            //    .with_translation(Vec3::new(0.0, 0.0, 1.0))
-            //    .with_uniform_scale(2.0)];
 
             let constants_ssbo = gl.create_buffer().unwrap();
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(constants_ssbo));
