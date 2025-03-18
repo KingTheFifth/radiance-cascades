@@ -5,7 +5,7 @@ use glow::{
 
 use crate::print_error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Texture {
     id: NativeTexture,
 }

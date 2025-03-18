@@ -12,13 +12,13 @@ use crate::Texture;
 type MaterialLoader = dyn Fn(&Path) -> tobj::MTLLoadResult;
 type TextureLoader = dyn Fn(&str) -> Vec<u8>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Model {
     pub meshes: Vec<Mesh>,
     material: Vec<Material>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Mesh {
     vertex_array: VertexArray,
     vertex_buffer: Buffer,
@@ -185,7 +185,7 @@ impl Mesh {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct Material {
     texture: Option<Texture>,
     k_d: Option<Vec3>,

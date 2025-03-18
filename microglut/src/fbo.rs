@@ -61,6 +61,16 @@ impl FBO {
             }
         }
     }
+
+    pub fn delete(&mut self, gl: &Context) {
+        unsafe {
+            gl.delete_renderbuffer(self.rb);
+            gl.delete_texture(self.tex);
+            gl.delete_framebuffer(self.fb);
+            self.width = -1;
+            self.height = -1;
+        }
+    }
 }
 
 // TODO: either FBO or screen size?
