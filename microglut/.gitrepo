@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://gitlab.liu.se/gusso230/microglut
+	branch = main
+	commit = 77c5f3a25286c7b7f7fcbcce6d305cf233eaaa52
+	parent = 0e1e80c8b487445d9075676972cdbd450b2665e0
+	method = merge
+	cmdver = 0.4.9

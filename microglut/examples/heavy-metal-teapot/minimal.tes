@@ -1,0 +1,27 @@
+#version 410 core
+
+//layout(triangles, equal_spacing, cw) in;
+layout(triangles) in;
+in vec4 tcPosition[]; // Original patch vertices
+in vec2 tcTexCoord[]; // Output of TC
+in vec3 tcNormal[]; // Output of TC
+out vec2 teTexCoord;
+out vec3 teNormal;
+
+void main()
+{
+    vec4 p0 = gl_TessCoord.x * tcPosition[0]; // Barycentric!
+    vec4 p1 = gl_TessCoord.y * tcPosition[1];
+    vec4 p2 = gl_TessCoord.z * tcPosition[2];
+    vec2 v0 = gl_TessCoord.x * tcTexCoord[0]; // Barycentric!
+    vec2 v1 = gl_TessCoord.y * tcTexCoord[1];
+    vec2 v2 = gl_TessCoord.z * tcTexCoord[2];
+    vec3 n0 = gl_TessCoord.x * tcNormal[0]; // Barycentric!
+    vec3 n1 = gl_TessCoord.y * tcNormal[1];
+    vec3 n2 = gl_TessCoord.z * tcNormal[2];
+    gl_Position = p0 + p1 + p2; // Sum with weights from the barycentric coords any way we like
+    teTexCoord = v0 + v1 + v2; // Sum with weights from the barycentric coords any way we like
+    teNormal = n0 + n1 + n2; // Sum with weights from the barycentric coords any way we like
+
+// Apply vertex transformation here if we want
+}

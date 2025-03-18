@@ -1,0 +1,26 @@
+#version 410 core
+
+layout(vertices = 3) out;
+in vec4 vPosition[]; // From vertex shader
+in vec2 vTexCoord[];
+in vec3 vNormal[];
+
+out vec4 tcPosition[]; // Output of TC
+out vec2 tcTexCoord[]; // Output of TC
+out vec3 tcNormal[]; // Output of TC
+
+uniform int TessLevelInner; // Sent from main program
+uniform int TessLevelOuter1;
+uniform int TessLevelOuter2;
+uniform int TessLevelOuter3;
+
+void main()
+{
+    tcPosition[gl_InvocationID] = vPosition[gl_InvocationID]; // Pass through the vertex at hand
+    tcTexCoord[gl_InvocationID] = vTexCoord[gl_InvocationID]; // Pass through the vertex at hand
+    tcNormal[gl_InvocationID] = vNormal[gl_InvocationID]; // Pass through the vertex at hand
+    gl_TessLevelInner[0] = TessLevelInner; // Decide tesselation level
+    gl_TessLevelOuter[0] = TessLevelOuter1;
+    gl_TessLevelOuter[1] = TessLevelOuter2;
+    gl_TessLevelOuter[2] = TessLevelOuter3;
+}

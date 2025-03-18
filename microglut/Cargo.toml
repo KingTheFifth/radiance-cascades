@@ -1,0 +1,36 @@
+[package]
+name = "microglut"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["imgui"]
+imgui = ["dep:imgui", "imgui-glow-renderer", "imgui-sdl2-support"]
+
+[dependencies]
+atomic_float = "1.1.0"
+bytemuck = "1.18.0"                                     # safe type casting (e.g. &[f32; 4] to &[u8; 16])
+glam = { version = "0.29.0", features = ["bytemuck"] }  # vector math
+glow = "0.14.0"                                         # gl bindings
+rand = "0.8.5"
+stb_image = "0.3.0"                                     # image loading
+tobj = { version = "4.0.2", default-features = false }  # small obj loader
+
+[dependencies.sdl2]
+version = "0.37.0"
+features = ["static-link", "use-pkgconfig"]
+
+[dependencies.imgui]
+git = "https://github.com/imgui-rs/imgui-rs"
+optional = true
+
+[patch.crates-io.imgui-sys]
+git = "https://github.com/imgui-rs/imgui-rs"
+
+[dependencies.imgui-glow-renderer]
+git = "https://github.com/imgui-rs/imgui-glow-renderer"
+optional = true
+
+[dependencies.imgui-sdl2-support]
+git = "https://github.com/imgui-rs/imgui-sdl2-support"
+optional = true
