@@ -30,7 +30,10 @@ pub struct Voxelizer {
     instanced_visualizing_program: NativeProgram,
     clear_program: NativeProgram,
     cube_renderer: CubeRenderer,
+
+    // Debug information
     visualisation_mode: VisualizationMode,
+    use_msaa: bool,
 
     // An MSAA render target is needed for an approximation of conservative rasterization
     msaa_fbo: NativeFramebuffer,
@@ -124,6 +127,7 @@ impl Voxelizer {
                 msaa_fbo,
                 cube_renderer,
                 visualisation_mode: VisualizationMode::Instanced,
+                use_msaa: true,
             }
         }
     }
@@ -160,7 +164,9 @@ impl Voxelizer {
     pub fn voxelize(&self, gl: &Context, objects: &Vec<Object>) {
         unsafe {
             gl.use_program(Some(self.voxelizer_program));
-            gl.bind_framebuffer(FRAMEBUFFER, Some(self.msaa_fbo));
+            if self.use_msaa {
+                gl.bind_framebuffer(FRAMEBUFFER, Some(self.msaa_fbo));
+            }
             gl.viewport(0, 0, self.resolution.x as _, self.resolution.y as _);
 
             let projection = Mat4::orthographic_rh(
@@ -316,11 +322,13 @@ impl Voxelizer {
             gl.viewport(0, 0, screen_resolution.x as _, screen_resolution.y as _);
 
             let aspect_ratio = screen_resolution.x / screen_resolution.y;
+            let w_t_v =
+                camera.view_transform() * Mat4::look_to_rh(-self.origin, Vec3::NEG_Z, Vec3::Y);
             gl.uniform_matrix_4_f32_slice(
                 gl.get_uniform_location(self.instanced_visualizing_program, "world_to_view")
                     .as_ref(),
                 false,
-                camera.view_transform().as_ref(),
+                w_t_v.as_ref(),
             );
             gl.uniform_matrix_4_f32_slice(
                 gl.get_uniform_location(self.instanced_visualizing_program, "projection")
@@ -372,6 +380,7 @@ impl Voxelizer {
             ui.input_float3("Origin", self.origin.as_mut()).build();
             ui.input_float("Volume half side length", &mut self.volume_half_side)
                 .build();
+            ui.checkbox("Voxelise with MSAA", &mut self.use_msaa);
 
             if let Some(cb) = ui.begin_combo("Mode", self.visualisation_mode.to_string()) {
                 for cur in VisualizationMode::VARIANTS {
