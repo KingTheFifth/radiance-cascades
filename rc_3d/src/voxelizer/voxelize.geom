@@ -6,10 +6,12 @@ layout(triangle_strip, max_vertices = 3) out;
 in vec3 geom_world_pos[];
 in vec3 geom_normal[];
 in vec4 geom_albedo[];
+in vec4 geom_emissive[];
 
 out vec4 frag_world_pos;
 out vec3 frag_normal;
 out vec4 frag_albedo;
+out vec4 frag_emissive;
 out int frag_axis;
 
 uniform mat4 projection_x;
@@ -22,7 +24,7 @@ void main() {
         frag_world_pos = vec4(geom_world_pos[i], 1.0);
         frag_normal = geom_normal[i];
         frag_albedo = geom_albedo[i];
-
+        frag_emissive = geom_emissive[i];
 
         // Project along the dominant axis of this triangle in order to render
         // the triangle with as large area as possible

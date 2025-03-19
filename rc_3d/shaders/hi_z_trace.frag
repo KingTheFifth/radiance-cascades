@@ -8,22 +8,27 @@ uniform sampler2D scene_albedo;
 uniform sampler2D scene_normal;
 uniform sampler2D scene_emissive;
 
-layout(std430) buffer HiZConstants {
-    vec2 screen_res;
-    vec2 screen_res_inv;
-    vec2 hi_z_resolution;
-    vec2 inv_hi_z_resolution;
-    float hi_z_start_mip_level;
-    float hi_z_max_mip_level;
-
-    float max_steps;
-    float z_far;
-
+layout(std430) buffer SceneMatrices {
+    mat4 world_to_view;
+    mat4 world_to_view_inv;
     mat4 perspective;
     mat4 perspective_inv;
-    float z_near;
+    vec2 screen_res;
+    vec2 screen_res_inv;
+} scene_constants;
+
+layout(std430) buffer HiZConstants {
+    vec2 hi_z_resolution;
+    vec2 inv_hi_z_resolution;
+
+    float hi_z_start_mip_level;
+    float hi_z_max_mip_level;
+    float max_steps;
     float max_ray_distance;
-};
+
+    float z_far;
+    float z_near;
+} hi_z_constants;
 const float DIR_EPS_X = 0.001;
 const float DIR_EPS_Y = 0.001;
 const float DIR_EPS_Z = 0.001;
@@ -45,6 +50,8 @@ vec3 octahedral_decode(vec2 v) {
 
 float screen_depth_to_view_depth(float depth) {
     // NOTE: These calculations depend on the projection matrix
+    const float z_near = hi_z_constants.z_near;
+    const float z_far = hi_z_constants.z_far;
     if (REMAP_DEPTH) {
         float remapped_depth = depth * 2.0 - 1.0;
         return - z_near * z_far / (z_far + remapped_depth * (z_near - z_far));
@@ -57,22 +64,24 @@ float screen_depth_to_view_depth(float depth) {
 vec4 screen_pos_to_view_pos(vec3 pixel_coord) {
     // Adapted from https://www.khronos.org/opengl/wiki/Compute_eye_space_from_window_space
     vec3 ndc = vec3(
-        2.0 * pixel_coord.x * screen_res_inv.x - 1.0,
-        2.0 * pixel_coord.y * screen_res_inv.y - 1.0,
+        2.0 * pixel_coord.x * scene_constants.screen_res_inv.x - 1.0,
+        2.0 * pixel_coord.y * scene_constants.screen_res_inv.y - 1.0,
         2.0 * pixel_coord.z - 1.0
     );
 
+    const mat4 perspective = scene_constants.perspective;
+    const mat4 perspective_inv = scene_constants.perspective_inv;
     float clip_w = perspective[3].z / (ndc.z - perspective[2].z / perspective[2].w);
     vec4 clip_pos = vec4(ndc.xyz * clip_w, clip_w);
     return perspective_inv * clip_pos;
 }
 
 vec4 view_pos_to_screen_pos(vec3 view_pos) {
-    vec4 clip_pos = perspective * vec4(view_pos, 1.0);
+    vec4 clip_pos = scene_constants.perspective * vec4(view_pos, 1.0);
     vec4 ndc = vec4(clip_pos.xyz / clip_pos.w, clip_pos.w);
     vec4 screen_pos = vec4(
-        (ndc.x + 1.0) * 0.5 * screen_res.x,
-        (ndc.y + 1.0) * 0.5 * screen_res.y,
+        (ndc.x + 1.0) * 0.5 * scene_constants.screen_res.x,
+        (ndc.y + 1.0) * 0.5 * scene_constants.screen_res.y,
         (ndc.z + 1.0) * 0.5,
         ndc.w
     );
@@ -81,7 +90,7 @@ vec4 view_pos_to_screen_pos(vec3 view_pos) {
 
 float get_far_z_depth() {
     // TODO: Is this correct?
-    return z_far;
+    return hi_z_constants.z_far;
     //return 1.0;
 }
 
@@ -103,7 +112,7 @@ void min_max_hi_z_traversal(
     inout float t_param,
     inout vec2 t_scene_z_minmax
 ) {
-    while (mip_level >= 0.0 && iters < max_steps && t_param <= 1.0) {
+    while (mip_level >= 0.0 && iters < hi_z_constants.max_steps && t_param <= 1.0) {
         iters++;
         const vec2 max_ray_point_xy = ray_start.xy + ray_dir.xy * t_param;
 
@@ -129,7 +138,7 @@ void min_max_hi_z_traversal(
         else {
             // Miss, go up to higher mip level
             t_param = t_pixel_edge;
-            mip_level = min(hi_z_max_mip_level, mip_level + 2.0);
+            mip_level = min(hi_z_constants.hi_z_max_mip_level, mip_level + 2.0);
         }
     }
 }
@@ -137,6 +146,8 @@ void min_max_hi_z_traversal(
 // ray_start, ray_end and hit point are all in screen space
 // returns true if hit, false if miss
 bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) {
+    const vec2 hi_z_resolution = hi_z_constants.hi_z_resolution;
+    const vec2 inv_hi_z_resolution = hi_z_constants.inv_hi_z_resolution;
     
     // Map ray ray_end point from (pixel coordinate, depth) to (UV coordinate, depth)
     ray_start.xy *= inv_hi_z_resolution;
@@ -164,7 +175,7 @@ bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) 
     const vec2 t_start_pixel_xy = ((starting_ray_pixel + step_length) / hi_z_resolution + step_offset - ray_start.xy) * ray_dir_inv.xy; 
     float t_param = min(t_start_pixel_xy.x, t_start_pixel_xy.y);
     vec2 t_scene_z_minmax = vec2(1.0, 0.0);
-    float mip_level = hi_z_start_mip_level;
+    float mip_level = hi_z_constants.hi_z_start_mip_level;
 
     min_max_hi_z_traversal(step_length, step_offset, ray_start, ray_dir, ray_dir_inv, mip_level, iters, t_param, t_scene_z_minmax);
 
@@ -183,7 +194,7 @@ vec4 ssr() {
 
     vec3 view_ray_vs = normalize(ray_start_vs);
     vec3 direction_vs = reflect(view_ray_vs, normal_vs);
-    vec3 end_point_vs = ray_start_vs + direction_vs * max_ray_distance;
+    vec3 end_point_vs = ray_start_vs + direction_vs * hi_z_constants.max_ray_distance;
     vec3 ray_end = view_pos_to_screen_pos(end_point_vs).xyz;
 
     vec3 hit_point = vec3(-1.0, -1.0, 0.0);
@@ -194,7 +205,7 @@ vec4 ssr() {
         missed = trace(ray_start, ray_end, iters, hit_point);
     }
 
-    vec4 hit_color = missed ? vec4(0.0, 0.5, 0.5, 1.0) : texture(scene_albedo, hit_point.xy * screen_res_inv);
+    vec4 hit_color = missed ? vec4(0.0, 0.5, 0.5, 1.0) : texture(scene_albedo, hit_point.xy * scene_constants.screen_res_inv);
     return hit_color;
 }
 

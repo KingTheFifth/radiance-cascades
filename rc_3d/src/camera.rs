@@ -6,16 +6,25 @@ pub struct Camera {
     pub fov: f32,
     pub near: f32,
     pub far: f32,
+    pub aspect_ratio: f32,
 }
 
 impl Camera {
-    pub fn new(position: Vec3, look_direction: Vec3, fov: f32, near: f32, far: f32) -> Self {
+    pub fn new(
+        position: Vec3,
+        look_direction: Vec3,
+        fov: f32,
+        near: f32,
+        far: f32,
+        aspect_ratio: f32,
+    ) -> Self {
         Self {
             position,
             look_direction,
             fov,
             near,
             far,
+            aspect_ratio,
         }
     }
 
@@ -35,8 +44,8 @@ impl Camera {
         Mat4::look_to_rh(self.position, self.look_direction, Vec3::Y)
     }
 
-    pub fn perspective_transform(&self, aspect_ratio: f32) -> Mat4 {
-        Mat4::perspective_rh(self.fov, aspect_ratio, self.near, self.far)
+    pub fn perspective_transform(&self) -> Mat4 {
+        Mat4::perspective_rh(self.fov, self.aspect_ratio, self.near, self.far)
     }
 
     pub fn move_by(&mut self, relative_position: Vec3) {

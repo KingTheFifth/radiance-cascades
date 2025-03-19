@@ -3,6 +3,7 @@
 in vec4 frag_world_pos;
 in vec3 frag_normal;
 in vec4 frag_albedo;
+in vec4 frag_emissive;
 flat in int frag_axis;
 
 layout(binding = 0, rgba16f) uniform writeonly image3D voxel_tex;
@@ -34,4 +35,5 @@ void main() {
     // TODO: Store normals in a separate 3D texture
     // TODO: Store through atomic averaging as several fragments may belong to the same voxel
     imageStore(voxel_tex, voxel_pos, frag_albedo);
+    //imageStore(voxel_tex, voxel_pos, frag_emissive);
 }

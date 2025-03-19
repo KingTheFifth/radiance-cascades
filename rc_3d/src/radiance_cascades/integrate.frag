@@ -8,29 +8,20 @@ uniform sampler2D scene_normal;
 uniform sampler2D scene_albedo;
 uniform sampler2D scene_emissive;
 
-layout(std430) readonly buffer Constants {
-    vec2 screen_res;
-    vec2 screen_res_inv;
+layout(std430) readonly buffer RCConstants {
+    vec2 c0_resolution;
+    float num_cascades;
+    float c0_probe_spacing;
+    float c0_interval_length;
+};
 
-    // Hi Z screen-space ray marching
-    vec2 hi_z_resolution;
-    vec2 inv_hi_z_resolution;
+layout(std430) readonly buffer SceneMatrices {
     mat4 world_to_view;
     mat4 world_to_view_inv;
     mat4 perspective;
     mat4 perspective_inv;
-    float hi_z_start_mip_level;
-    float hi_z_max_mip_level;
-    float max_steps;
-    float max_ray_distance;
-    float z_far;
-    float z_near;
-
-    // Radiance cascades
-    float num_cascades;
-    float c0_probe_spacing;
-    float c0_interval_length;
-    vec2 c0_resolution;
+    vec2 screen_res;
+    vec2 screen_res_inv;
 };
 
 const float altitudes[4] = {acos(-0.75), acos(-0.25), acos(0.25), acos(0.75)};

@@ -12,30 +12,37 @@ uniform bool merge_cascades;
 
 out vec4 color;
 
-layout(std430) readonly buffer Constants {
-    vec2 screen_res;
-    vec2 screen_res_inv;
+layout(std430) readonly buffer RCConstants {
+    vec2 c0_resolution;
+    float num_cascades;
+    float c0_probe_spacing;
+    float c0_interval_length;
+};
 
-    // Hi Z screen-space ray marching
+layout(std430) readonly buffer HiZConstants {
     vec2 hi_z_resolution;
     vec2 inv_hi_z_resolution;
-    mat4 world_to_view;
-    mat4 world_to_view_inv;
-    mat4 perspective;
-    mat4 perspective_inv;
     float hi_z_start_mip_level;
     float hi_z_max_mip_level;
     float max_steps;
     float max_ray_distance;
     float z_far;
     float z_near;
-
-    // Radiance cascades
-    float num_cascades;
-    float c0_probe_spacing;
-    float c0_interval_length;
-    vec2 c0_resolution;
 };
+
+layout(std430) readonly buffer SceneMatrices {
+    mat4 world_to_view;
+    mat4 world_to_view_inv;
+    mat4 perspective;
+    mat4 perspective_inv;
+    vec2 screen_res;
+    vec2 screen_res_inv;
+};
+
+uniform float step_length;
+uniform float step_count;
+uniform mat4 world_to_voxel;
+layout(binding = 0, rgba16f) uniform readonly image3D voxel_tex;
 
 const float DIR_EPS_X = 0.001;
 const float DIR_EPS_Y = 0.001;
@@ -61,6 +68,8 @@ vec3 octahedral_decode(vec2 v) {
 
 float screen_depth_to_view_depth(float depth) {
     // NOTE: These calculations depend on the projection matrix
+    const float z_near = z_near;
+    const float z_far = z_far;
     if (REMAP_DEPTH) {
         float remapped_depth = depth * 2.0 - 1.0;
         return - z_near * z_far / (z_far + remapped_depth * (z_near - z_far));
@@ -78,6 +87,8 @@ vec4 screen_pos_to_view_pos(vec3 pixel_coord) {
         2.0 * pixel_coord.z - 1.0
     );
 
+    const mat4 perspective = perspective;
+    const mat4 perspective_inv = perspective_inv;
     float clip_w = perspective[3].z / (ndc.z - perspective[2].z / perspective[2].w);
     vec4 clip_pos = vec4(ndc.xyz * clip_w, clip_w);
     return perspective_inv * clip_pos;
@@ -215,9 +226,9 @@ vec4 trace_radiance(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
 vec4 trace_radiance_naive(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
     vec3 ray_end_vs = ray_start_vs + ray_dir_vs * interval_length;
 
-    float step_count = float(20 * (2 << (int(cascade_index) + 1)));
-    float step_count_inv = 1.0 / (step_count - 1.0);
-    for (float i = 0.0; i < step_count; i++) {
+    float steps = float(20 * (2 << (int(cascade_index) + 1)));
+    float step_count_inv = 1.0 / (steps - 1.0);
+    for (float i = 0.0; i < steps; i++) {
         float traveled_distance = i * step_count_inv;
         vec3 ray_vs = mix(ray_start_vs, ray_end_vs, traveled_distance);
         vec3 ray_ss = view_pos_to_screen_pos(ray_vs).xyz;
@@ -233,6 +244,18 @@ vec4 trace_radiance_naive(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_len
         }
     }
     return vec4(0.0, 0.0, 0.0, 1.0);
+}
+
+vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
+    for (float s = 0.0; s < step_count && s * step_length <= interval_length; s++) {
+        const vec3 curr_point = ray_start_ws + ray_dir_ws * s * step_length;
+        const vec3 sample_point = (world_to_voxel * vec4(curr_point, 1.0)).xyz;
+        const vec4 curr_sample = imageLoad(voxel_tex, ivec3(sample_point));
+        if (curr_sample.a > 0.05) {
+            return vec4(linear_to_srgb(curr_sample.rgb), 0.0);
+        }
+    }
+    return vec4(0.0, 0.1, 0.1, 1.0);
 }
 
 vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within_block) {
@@ -317,8 +340,9 @@ void main() {
     // TODO: Trace both min and max depth probes at the same time somehow
     const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
     const vec3 ray_start_vs = min_probe_pos_vs.xyz + ray_dir_vs * interval_start;
-    vec4 radiance_min = trace_radiance(ray_start_vs, ray_dir_vs, interval_length);
+    //vec4 radiance_min = trace_radiance(ray_start_vs, ray_dir_vs, interval_length);
     //vec4 radiance_min = trace_radiance_naive(ray_start_ws, ray_dir_ws, interval_length);
+    vec4 radiance_min = trace_radiance_voxel(ray_start_ws, ray_dir_ws, interval_length);
 
     vec4 unmerged_radiance = radiance_min;
     vec4 merged_radiance = merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block);

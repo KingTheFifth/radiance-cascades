@@ -138,6 +138,31 @@ impl Voxelizer {
         }
     }
 
+    pub fn world_to_voxel(&self) -> Mat4 {
+        let projection = Mat4::orthographic_rh(
+            -self.volume_half_side,
+            self.volume_half_side,
+            -self.volume_half_side,
+            self.volume_half_side,
+            -self.volume_half_side,
+            self.volume_half_side,
+        );
+        let projection_z = projection * Mat4::look_to_rh(self.origin, Vec3::NEG_Z, Vec3::Y);
+        let world_to_voxel = Mat4::from_scale(self.resolution)
+            * Mat4::from_cols(
+                Vec4::X * 0.5,
+                Vec4::Y * 0.5,
+                Vec4::NEG_Z * 1.0,
+                Vec4::new(0.5, 0.5, 1.0, 1.0),
+            )
+            * projection_z;
+        world_to_voxel
+    }
+
+    pub fn voxel_texture(&self) -> NativeTexture {
+        self.voxel_texture
+    }
+
     pub fn clear_voxels(&self, gl: &Context, quad_renderer: &QuadRenderer, clear_color: Vec4) {
         unsafe {
             gl.use_program(Some(self.clear_program));
@@ -230,6 +255,11 @@ impl Voxelizer {
                     gl.get_uniform_location(self.voxelizer_program, "albedo")
                         .as_ref(),
                     obj.albedo.as_ref(),
+                );
+                gl.uniform_4_f32_slice(
+                    gl.get_uniform_location(self.voxelizer_program, "emissive")
+                        .as_ref(),
+                    obj.emissive.as_ref(),
                 );
                 obj.model.draw(
                     gl,
@@ -343,7 +373,6 @@ impl Voxelizer {
             gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.viewport(0, 0, screen_resolution.x as _, screen_resolution.y as _);
 
-            let aspect_ratio = screen_resolution.x / screen_resolution.y;
             let w_t_v =
                 camera.view_transform() * Mat4::look_to_rh(-self.origin, Vec3::NEG_Z, Vec3::Y);
             gl.uniform_matrix_4_f32_slice(
@@ -356,7 +385,7 @@ impl Voxelizer {
                 gl.get_uniform_location(self.instanced_visualizing_program, "projection")
                     .as_ref(),
                 false,
-                camera.perspective_transform(aspect_ratio).as_ref(),
+                camera.perspective_transform().as_ref(),
             );
             gl.uniform_3_i32(
                 gl.get_uniform_location(self.instanced_visualizing_program, "voxel_resolution")

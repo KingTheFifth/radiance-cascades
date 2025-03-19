@@ -8,29 +8,26 @@ out vec4 color;
 
 const bool REMAP_DEPTH = false;
 
-layout(std430) readonly buffer Constants {
-    vec2 screen_res;
-    vec2 screen_res_inv;
-
-    // Hi Z screen-space ray marching
-    vec2 hi_z_resolution;
-    vec2 inv_hi_z_resolution;
+layout(std430) buffer SceneMatrices {
     mat4 world_to_view;
     mat4 world_to_view_inv;
     mat4 perspective;
     mat4 perspective_inv;
+    vec2 screen_res;
+    vec2 screen_res_inv;
+};
+
+layout(std430) buffer HiZConstants {
+    vec2 hi_z_resolution;
+    vec2 inv_hi_z_resolution;
+
     float hi_z_start_mip_level;
     float hi_z_max_mip_level;
     float max_steps;
     float max_ray_distance;
+
     float z_far;
     float z_near;
-
-    // Radiance cascades
-    float num_cascades;
-    float c0_probe_spacing;
-    float c0_interval_length;
-    vec2 c0_resolution;
 };
 
 vec3 octahedral_decode(vec2 v) {
