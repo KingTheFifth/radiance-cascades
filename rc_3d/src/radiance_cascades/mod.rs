@@ -250,7 +250,7 @@ impl RadianceCascades {
                     0,
                     0,
                     self.constants.c0_resolution.x as _,
-                    self.constants.c0_resolution.y as _,
+                    (self.constants.c0_resolution.y / 2.0_f32.powi(n)) as _,
                 );
                 self.cascades.bind_cascade_as_output(gl, n as _);
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
@@ -302,10 +302,10 @@ impl RadianceCascades {
                 self.constants_ssbo_binding,
             );
             let scene_matrices_ssbo_loc = gl
-                .get_shader_storage_block_index(self.cascade_program, "SceneMatrices")
+                .get_shader_storage_block_index(self.integration_program, "SceneMatrices")
                 .unwrap();
             gl.shader_storage_block_binding(
-                self.cascade_program,
+                self.integration_program,
                 scene_matrices_ssbo_loc,
                 scene_matrices_binding,
             );
