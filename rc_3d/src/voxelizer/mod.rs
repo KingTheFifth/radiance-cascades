@@ -5,9 +5,9 @@ use microglut::{
         NativeVertexArray, ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
         CULL_FACE, DEPTH_ATTACHMENT, DEPTH_BUFFER_BIT, DEPTH_COMPONENT16, DEPTH_TEST,
         ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, NEAREST, READ_ONLY, RENDERBUFFER, RGBA, RGBA16,
-        RGBA16F, RGBA8, STATIC_DRAW, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D, TEXTURE_MAG_FILTER,
-        TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T, TRIANGLES,
-        UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
+        RGBA16F, RGBA8, SHADER_STORAGE_BUFFER, STATIC_DRAW, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D,
+        TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
+        TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
     },
     imgui, LoadShaders,
 };
@@ -26,6 +26,8 @@ pub struct Voxelizer {
     volume_half_side: f32,
 
     voxel_texture: NativeTexture,
+    voxel_array_ssbo: NativeBuffer,
+    voxel_array_ssbo_binding: u32,
     voxelizer_program: NativeProgram,
     instanced_visualizing_program: NativeProgram,
     clear_program: NativeProgram,
@@ -119,6 +121,32 @@ impl Voxelizer {
 
             let cube_renderer = CubeRenderer::new(gl);
 
+            let voxel_array_ssbo_binding = 4;
+            let voxel_array_ssbo = gl.create_buffer().unwrap();
+            gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(voxel_array_ssbo));
+            gl.bind_buffer_base(
+                SHADER_STORAGE_BUFFER,
+                voxel_array_ssbo_binding,
+                Some(voxel_array_ssbo),
+            );
+            let mut voxel_array_ssbo_loc = gl
+                .get_shader_storage_block_index(voxelizer_program, "VoxelArray")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                voxelizer_program,
+                voxel_array_ssbo_loc,
+                voxel_array_ssbo_binding,
+            );
+
+            voxel_array_ssbo_loc = gl
+                .get_shader_storage_block_index(visualizing_program, "VoxelArray")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                visualizing_program,
+                voxel_array_ssbo_loc,
+                voxel_array_ssbo_binding,
+            );
+
             Self {
                 resolution,
                 origin,
@@ -134,6 +162,8 @@ impl Voxelizer {
                 use_msaa: true,
                 tracer_step_count: 400.0,
                 tracer_step_length: 0.05,
+                voxel_array_ssbo,
+                voxel_array_ssbo_binding,
             }
         }
     }
@@ -187,6 +217,15 @@ impl Voxelizer {
                 gl.get_uniform_location(self.clear_program, "voxel_resolution")
                     .as_ref(),
                 self.resolution.as_ivec3().as_ref(),
+            );
+
+            let voxel_count = self.resolution.x * self.resolution.y * self.resolution.z;
+            let clear_data = vec![clear_color; voxel_count as usize];
+            gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(self.voxel_array_ssbo));
+            gl.buffer_data_u8_slice(
+                SHADER_STORAGE_BUFFER,
+                bytemuck::cast_slice(clear_data.as_slice()),
+                STATIC_DRAW,
             );
 
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
@@ -366,6 +405,11 @@ impl Voxelizer {
                 gl.get_uniform_location(self.tracer_program, "step_count")
                     .as_ref(),
                 self.tracer_step_count,
+            );
+            gl.uniform_3_i32_slice(
+                gl.get_uniform_location(self.tracer_program, "voxel_resolution")
+                    .as_ref(),
+                self.resolution.as_ivec3().as_ref(),
             );
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16);
 

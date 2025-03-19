@@ -14,7 +14,7 @@ use microglut::{
         COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEBUG_OUTPUT, DEPTH_BUFFER_BIT, DEPTH_TEST,
         DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
         READ_ONLY, RGBA16F, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
-        TEXTURE2, TEXTURE3, TEXTURE_2D, TEXTURE_MAX_LEVEL,
+        TEXTURE2, TEXTURE3, TEXTURE_2D, TEXTURE_3D, TEXTURE_MAX_LEVEL,
     },
     imgui, load_shaders,
     sdl2::{
@@ -508,7 +508,7 @@ impl MicroGLUT for App {
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.voxelizer
-            .clear_voxels(gl, &self.quad_renderer, Vec4::new(0.0, 0.0, 0.0, 0.0));
+            .clear_voxels(gl, &self.quad_renderer, Vec4::new(0.0, 0.0, 0.0, 0.00));
         self.voxelizer.voxelize(gl, &self.objects);
         if self.debug {
             match self.debug_mode {

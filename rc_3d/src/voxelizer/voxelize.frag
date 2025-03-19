@@ -8,6 +8,10 @@ flat in int frag_axis;
 
 layout(binding = 0, rgba16f) uniform writeonly image3D voxel_tex;
 
+layout(std430) writeonly buffer VoxelArray {
+    vec4 albedo[];
+} voxel_array;
+
 uniform ivec3 voxel_resolution;
 
 out vec4 color;
@@ -34,6 +38,7 @@ void main() {
 
     // TODO: Store normals in a separate 3D texture
     // TODO: Store through atomic averaging as several fragments may belong to the same voxel
-    imageStore(voxel_tex, voxel_pos, frag_albedo);
+    //imageStore(voxel_tex, voxel_pos, frag_albedo);
     //imageStore(voxel_tex, voxel_pos, frag_emissive);
+    voxel_array.albedo[voxel_pos.x + voxel_pos.z * voxel_resolution.x + voxel_pos.y * voxel_resolution.x * voxel_resolution.z] = frag_albedo;
 }
