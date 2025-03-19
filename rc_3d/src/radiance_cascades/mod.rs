@@ -10,7 +10,8 @@ use microglut::{
 };
 
 use crate::{
-    cascade_fbo::CascadeFBO, quad_renderer::QuadRenderer, scene_fbo::SceneFBO, voxelizer::Voxelizer,
+    camera::Camera, cascade_fbo::CascadeFBO, quad_renderer::QuadRenderer, scene_fbo::SceneFBO,
+    voxelizer::Voxelizer,
 };
 
 /// Rounds up a number to a power of n.
@@ -189,12 +190,12 @@ impl RadianceCascades {
             gl.uniform_1_f32(
                 gl.get_uniform_location(self.cascade_program, "step_length")
                     .as_ref(),
-                0.05,
+                voxelizer.step_length(),
             );
             gl.uniform_1_f32(
                 gl.get_uniform_location(self.cascade_program, "step_count")
                     .as_ref(),
-                400.0,
+                voxelizer.step_count(),
             );
             gl.uniform_matrix_4_f32_slice(
                 gl.get_uniform_location(self.cascade_program, "world_to_voxel")

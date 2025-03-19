@@ -68,8 +68,6 @@ vec3 octahedral_decode(vec2 v) {
 
 float screen_depth_to_view_depth(float depth) {
     // NOTE: These calculations depend on the projection matrix
-    const float z_near = z_near;
-    const float z_far = z_far;
     if (REMAP_DEPTH) {
         float remapped_depth = depth * 2.0 - 1.0;
         return - z_near * z_far / (z_far + remapped_depth * (z_near - z_far));
@@ -87,8 +85,6 @@ vec4 screen_pos_to_view_pos(vec3 pixel_coord) {
         2.0 * pixel_coord.z - 1.0
     );
 
-    const mat4 perspective = perspective;
-    const mat4 perspective_inv = perspective_inv;
     float clip_w = perspective[3].z / (ndc.z - perspective[2].z / perspective[2].w);
     vec4 clip_pos = vec4(ndc.xyz * clip_w, clip_w);
     return perspective_inv * clip_pos;
@@ -255,7 +251,7 @@ vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
             return vec4(linear_to_srgb(curr_sample.rgb), 0.0);
         }
     }
-    return vec4(0.0, 0.1, 0.1, 1.0);
+    return vec4(0.0, 0.0, 0.0, 1.0);
 }
 
 vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within_block) {

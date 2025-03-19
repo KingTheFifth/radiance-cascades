@@ -163,6 +163,14 @@ impl Voxelizer {
         self.voxel_texture
     }
 
+    pub fn step_length(&self) -> f32 {
+        self.tracer_step_length
+    }
+
+    pub fn step_count(&self) -> f32 {
+        self.tracer_step_count
+    }
+
     pub fn clear_voxels(&self, gl: &Context, quad_renderer: &QuadRenderer, clear_color: Vec4) {
         unsafe {
             gl.use_program(Some(self.clear_program));
