@@ -61,7 +61,7 @@ pub struct RadianceCascades {
 
     // Debug info
     merge_cascades: bool,
-    debug_cascade_index: i32,
+    debug_cascade_index: usize,
 }
 
 impl RadianceCascadesConstants {
@@ -220,7 +220,6 @@ impl RadianceCascades {
                 constants_ssbo_loc,
                 self.constants_ssbo_binding,
             );
-            self.constants.upload_to_buffer(gl, self.constants_ssbo);
 
             let hi_z_constants_ssbo_loc = gl
                 .get_shader_storage_block_index(self.cascade_program, "HiZConstants")
@@ -275,6 +274,7 @@ impl RadianceCascades {
     fn integrate_radiance(
         &self,
         gl: &Context,
+        cascade_index: usize,
         screen_resolution: Vec2,
         scene: &SceneFBO,
         scene_matrices_binding: u32,
@@ -282,7 +282,7 @@ impl RadianceCascades {
         unsafe {
             gl.use_program(Some(self.integration_program));
             gl.uniform_1_i32(
-                gl.get_uniform_location(self.integration_program, "merged_cascade_0")
+                gl.get_uniform_location(self.integration_program, "cascade")
                     .as_ref(),
                 0,
             );
@@ -301,6 +301,11 @@ impl RadianceCascades {
                     .as_ref(),
                 3,
             );
+            gl.uniform_1_f32(
+                gl.get_uniform_location(self.integration_program, "cascade_index")
+                    .as_ref(),
+                cascade_index as _,
+            );
             let constants_ssbo_loc = gl
                 .get_shader_storage_block_index(self.integration_program, "RCConstants")
                 .unwrap();
@@ -318,7 +323,8 @@ impl RadianceCascades {
                 scene_matrices_binding,
             );
 
-            self.cascades.bind_cascade_as_texture(gl, 0, TEXTURE0);
+            self.cascades
+                .bind_cascade_as_texture(gl, cascade_index, TEXTURE0);
             gl.active_texture(TEXTURE1);
             gl.bind_texture(TEXTURE_2D, Some(scene.normal));
             gl.active_texture(TEXTURE2);
@@ -353,17 +359,16 @@ impl RadianceCascades {
 
         let cascade_width = self.constants.c0_resolution.x as i32;
         let cascde_height =
-            (self.constants.c0_resolution.y / 2.0_f32.powi(self.debug_cascade_index)) as i32;
+            (self.constants.c0_resolution.y / 2.0_f32.powi(self.debug_cascade_index as i32)) as i32;
         let screen_width = screen_resolution.x as i32;
         let screen_height = screen_resolution.y as i32;
-
         unsafe {
             gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.cascades.fb));
             gl.read_buffer(COLOR_ATTACHMENT0);
             gl.framebuffer_texture(
                 READ_FRAMEBUFFER,
                 COLOR_ATTACHMENT0,
-                Some(self.cascades.cascades[self.debug_cascade_index as usize]),
+                Some(self.cascades.cascades[self.debug_cascade_index]),
                 0,
             );
             gl.viewport(0, 0, screen_width, screen_height);
@@ -400,15 +405,21 @@ impl RadianceCascades {
             hi_z_constants_binding,
             voxelizer,
         );
-        self.integrate_radiance(gl, screen_resolution, scene, scene_matrices_binding);
+        self.integrate_radiance(
+            gl,
+            self.debug_cascade_index,
+            screen_resolution,
+            scene,
+            scene_matrices_binding,
+        );
     }
 
-    pub fn ui(&mut self, ui: &imgui::Ui) {
+    pub fn ui(&mut self, gl: &Context, ui: &imgui::Ui) {
         let mut constants_changed = false;
         if ui.tree_node("Radiance cascades").is_some() {
             constants_changed = constants_changed
                 || ui
-                    .input_int("Cascade index", &mut self.debug_cascade_index)
+                    .input_scalar("Cascade index", &mut self.debug_cascade_index)
                     .build();
             constants_changed = constants_changed
                 || ui.slider(
@@ -419,6 +430,10 @@ impl RadianceCascades {
                 );
             constants_changed =
                 constants_changed || ui.checkbox("Merged cascades", &mut self.merge_cascades);
+        }
+
+        if constants_changed {
+            self.constants.upload_to_buffer(gl, self.constants_ssbo);
         }
     }
 }

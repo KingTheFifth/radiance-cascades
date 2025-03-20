@@ -683,7 +683,7 @@ impl MicroGLUT for App {
             cb.end();
         }
 
-        self.radiance_cascades.ui(ui);
+        self.radiance_cascades.ui(gl, ui);
         self.voxelizer.ui(ui);
 
         if ui.tree_node("Ray marching").is_some() {
