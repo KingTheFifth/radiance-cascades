@@ -351,7 +351,7 @@ impl MicroGLUT for App {
         voxelizer.clear_voxels(gl, &quad_renderer, Vec4::new(0., 0., 0., 0.0));
 
         let camera = Camera::new(
-            Vec3::ZERO,
+            Vec3::new(0., 1., -1.),
             Vec3::Z,
             PI * 0.5,
             0.1,
