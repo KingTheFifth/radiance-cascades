@@ -21,6 +21,8 @@ out vec4 color;
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
 #define NORMAL_OFFSET 0.05
 
+#define DEBUG_INTERVALS 0 // Use c0 interval length for all cascades
+
 layout(std430) readonly buffer RCConstants {
     vec2 c0_resolution;
     float num_cascades;
@@ -311,8 +313,13 @@ void main() {
     const vec2 coord_within_dir_block = mod(pixel_coord, probe_count);
     const vec2 dir_block_index = floor(pixel_coord / probe_count);
 
+    #ifdef DEBUG_INTERVALS
+    const float interval_length = c0_interval_length;
+    const float interval_start = c0_interval_length * cascade_index;
+    #else
     const float interval_length = c0_interval_length * pow(4.0, cascade_index);
     const float interval_start = c0_interval_length * ((1.0 - pow(4.0, cascade_index)) / (1.0 - 4.0));
+    #endif
 
     const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
     const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);

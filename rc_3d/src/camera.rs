@@ -1,4 +1,10 @@
-use microglut::glam::{Mat4, Quat, Vec3};
+use std::f32::consts::PI;
+
+use microglut::{
+    glam::{Mat4, Quat, Vec3},
+    glow::Context,
+    imgui,
+};
 
 pub struct Camera {
     pub position: Vec3,
@@ -7,6 +13,8 @@ pub struct Camera {
     pub near: f32,
     pub far: f32,
     pub aspect_ratio: f32,
+    pub walk_speed: f32,
+    pub rotational_speed: f32,
 }
 
 impl Camera {
@@ -25,6 +33,8 @@ impl Camera {
             near,
             far,
             aspect_ratio,
+            walk_speed: 1.0,
+            rotational_speed: 1.0,
         }
     }
 
@@ -55,5 +65,13 @@ impl Camera {
     pub fn rotate(&mut self, rotation: Quat) {
         let rot_mat = Mat4::from_quat(rotation);
         self.look_direction = rot_mat.transform_vector3(self.look_direction);
+    }
+
+    pub fn ui(&mut self, ui: &imgui::Ui) {
+        if ui.tree_node("Camera").is_some() {
+            ui.slider("Walk speed", 0.0, 10.0, &mut self.walk_speed);
+            ui.slider("Rotational speed", 0.1, 10.0, &mut self.rotational_speed);
+            ui.slider("FOV", 0.1, 1.9 * PI, &mut self.fov);
+        }
     }
 }

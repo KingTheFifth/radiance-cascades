@@ -425,7 +425,7 @@ impl RadianceCascades {
                 || ui.slider(
                     "Interval length",
                     0.0,
-                    200.0,
+                    50.0,
                     &mut self.constants.c0_interval_length,
                 );
             constants_changed =

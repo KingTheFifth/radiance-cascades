@@ -630,7 +630,8 @@ impl MicroGLUT for App {
                 }
                 _ => Vec3::ZERO,
             };
-            self.camera.move_by(direction * delta_time());
+            self.camera
+                .move_by(direction * delta_time() * self.camera.walk_speed);
         }
     }
 
@@ -683,6 +684,7 @@ impl MicroGLUT for App {
             cb.end();
         }
 
+        self.camera.ui(ui);
         self.radiance_cascades.ui(gl, ui);
         self.voxelizer.ui(ui);
 
