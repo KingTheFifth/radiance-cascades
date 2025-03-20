@@ -16,7 +16,7 @@ out vec4 color;
 #define NAIVE_SS 0
 #define HI_Z 1
 #define VOXEL 2
-#define TRACE_METHOD VOXEL 
+#define TRACE_METHOD VOXEL
 
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
 #define NORMAL_OFFSET 0.05
@@ -172,6 +172,8 @@ void min_max_hi_z_traversal(
 // ray_start, ray_end and hit point are all in screen space
 // returns true if hit, false if miss
 bool trace_hi_z(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) {
+    // Based on "Screen Space Reflection Techniques" by Anthony Paul Beug
+    // https://ourspace.uregina.ca/server/api/core/bitstreams/14fd32d7-de0c-4da0-9fda-98892b57469c/content
     
     // Map ray ray_end point from (pixel coordinate, depth) to (UV coordinate, depth)
     ray_start.xy *= inv_hi_z_resolution;
