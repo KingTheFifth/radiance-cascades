@@ -339,8 +339,8 @@ impl MicroGLUT for App {
 
         let scene = SceneFBO::init(gl, screen_width, screen_height);
 
-        let voxel_res = 128.0;
-        let voxel_origin = Vec3::new(0.0, 0.0, 4.5);
+        let voxel_res = 256.0;
+        let voxel_origin = Vec3::new(0.0, 0.0, 0.0);
         let voxel_volume_half_side = 6.0;
         let voxelizer = Voxelizer::new(
             gl,
@@ -456,25 +456,40 @@ impl MicroGLUT for App {
                 None,
             );
 
+            let cube_model =
+                Model::load_obj_data(gl, include_bytes!("../models/cube.obj"), None, None);
+            let cube = Object::new(cube_model);
+
+            //let objects = vec![
+            //    Object::new(rock.clone())
+            //        .with_rotation(Quat::from_rotation_x(-0.2))
+            //        .with_translation(Vec3::new(0.0, 0.0, 2.0))
+            //        .with_albedo(Vec4::new(0.0, 0.0, 0.0, 1.0))
+            //        .with_emissive(Vec4::new(4.0, 4.0, 4.0, 1.0)),
+            //    Object::new(rock.clone())
+            //        .with_rotation(Quat::from_rotation_x(-1.0))
+            //        .with_translation(Vec3::new(0.5, 0.0, 1.0))
+            //        .with_albedo(Vec4::new(0.0, 0.5, 0.8, 1.0)),
+            //    Object::new(rock.clone())
+            //        .with_rotation(Quat::from_rotation_x(-PI))
+            //        .with_uniform_scale(15.0)
+            //        .with_translation(Vec3::new(0.0, -0.5, 3.0)),
+            //    Object::new(rock.clone())
+            //        .with_rotation(Quat::from_rotation_x(-3.0 * PI / 2.0))
+            //        .with_uniform_scale(15.0)
+            //        .with_translation(Vec3::new(0.0, 0.0, 6.0))
+            //        .with_albedo(Vec4::new(0.5, 0.1, 0.5, 1.0)),
+            //];
+
             let objects = vec![
-                Object::new(rock.clone())
-                    .with_rotation(Quat::from_rotation_x(-0.2))
-                    .with_translation(Vec3::new(0.0, 0.0, 2.0))
-                    .with_albedo(Vec4::new(0.0, 0.0, 0.0, 1.0))
-                    .with_emissive(Vec4::new(4.0, 4.0, 4.0, 1.0)),
-                Object::new(rock.clone())
-                    .with_rotation(Quat::from_rotation_x(-1.0))
-                    .with_translation(Vec3::new(0.5, 0.0, 1.0))
-                    .with_albedo(Vec4::new(0.0, 0.5, 0.8, 1.0)),
-                Object::new(rock.clone())
-                    .with_rotation(Quat::from_rotation_x(-PI))
-                    .with_uniform_scale(15.0)
-                    .with_translation(Vec3::new(0.0, -0.5, 3.0)),
-                Object::new(rock.clone())
-                    .with_rotation(Quat::from_rotation_x(-3.0 * PI / 2.0))
-                    .with_uniform_scale(15.0)
-                    .with_translation(Vec3::new(0.0, 0.0, 6.0))
-                    .with_albedo(Vec4::new(0.5, 0.1, 0.5, 1.0)),
+                cube.clone()
+                    .with_emissive(Vec4::new(0.7, 0.7, 0.7, 1.0))
+                    .with_albedo(Vec4::W)
+                    .with_translation(Vec3::new(0., 1., 2.)),
+                cube.clone()
+                    .with_albedo(Vec4::new(0., 0.1, 1., 1.))
+                    .with_uniform_scale(10.)
+                    .with_translation(Vec3::new(0., -10., 0.)),
             ];
 
             App {

@@ -5,7 +5,8 @@ use microglut::{
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
         DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, READ_FRAMEBUFFER, READ_ONLY, RGBA16F,
-        SHADER_STORAGE_BUFFER, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3, TEXTURE_2D,
+        SHADER_STORAGE_BUFFER, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3, TEXTURE4,
+        TEXTURE_2D,
     },
     imgui, LoadShaders,
 };
@@ -149,6 +150,8 @@ impl RadianceCascades {
             gl.active_texture(TEXTURE2);
             gl.bind_texture(TEXTURE_2D, Some(scene.emissive));
             gl.active_texture(TEXTURE3);
+            gl.bind_texture(TEXTURE_2D, Some(scene.normal));
+            gl.active_texture(TEXTURE4);
             gl.bind_texture(TEXTURE_2D, Some(scene.hi_z_texture));
 
             gl.uniform_1_i32(
@@ -167,9 +170,14 @@ impl RadianceCascades {
                 2,
             );
             gl.uniform_1_i32(
-                gl.get_uniform_location(self.cascade_program, "hi_z_tex")
+                gl.get_uniform_location(self.cascade_program, "scene_normal")
                     .as_ref(),
                 3,
+            );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.cascade_program, "hi_z_tex")
+                    .as_ref(),
+                4,
             );
 
             gl.uniform_1_i32(

@@ -3,6 +3,7 @@ use microglut::{
     Model,
 };
 
+#[derive(Clone)]
 pub struct Object {
     pub model: Model,
     rotation: Quat,

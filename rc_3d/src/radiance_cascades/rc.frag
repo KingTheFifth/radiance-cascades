@@ -5,6 +5,7 @@ in vec2 tex_coord;
 uniform sampler2D prev_cascade;
 uniform sampler2D scene_albedo;
 uniform sampler2D scene_emissive;
+uniform sampler2D scene_normal; // View space
 uniform sampler2D hi_z_tex;
 uniform float cascade_index;
 
@@ -15,9 +16,10 @@ out vec4 color;
 #define NAIVE_SS 0
 #define HI_Z 1
 #define VOXEL 2
-#define TRACE_METHOD VOXEL
+#define TRACE_METHOD VOXEL 
 
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
+#define NORMAL_OFFSET 0.05
 
 layout(std430) readonly buffer RCConstants {
     vec2 c0_resolution;
@@ -314,7 +316,7 @@ void main() {
 
     const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
     const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
-    const vec4 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss);
+    const vec4 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss) + texture(scene_normal, probe_pixel * screen_res_inv) * NORMAL_OFFSET;
     const vec3 min_probe_pos_ws = (world_to_view_inv * min_probe_pos_vs).xyz;
     //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
@@ -338,8 +340,8 @@ void main() {
     ));
 
     // TODO: Trace both min and max depth probes at the same time somehow
-    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start + ray_dir_ws * 0.1;
-    const vec3 ray_start_vs = min_probe_pos_vs.xyz + ray_dir_vs * interval_start + ray_dir_vs * 0.1;
+    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
+    const vec3 ray_start_vs = min_probe_pos_vs.xyz + ray_dir_vs * interval_start;
 
     #if (TRACE_METHOD == NAIVE_SS)
     vec4 radiance_min = trace_radiance_naive_screen_space(ray_start_ws, ray_dir_ws, interval_length);
