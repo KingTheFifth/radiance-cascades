@@ -21,8 +21,8 @@ out vec4 color;
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
 #define NORMAL_OFFSET 0.05
 
-// Use c0 interval length for all cascades
-#define DEBUG_INTERVALS true
+// Uncomment to use c0 interval length for all cascades
+#define DEBUG_INTERVALS
 
 layout(std430) readonly buffer RCConstants {
     vec2 c0_resolution;
@@ -314,7 +314,7 @@ void main() {
     const vec2 coord_within_dir_block = mod(pixel_coord, probe_count);
     const vec2 dir_block_index = floor(pixel_coord / probe_count);
 
-    #if (DEBUG_INTERVALS == true)
+    #ifdef DEBUG_INTERVALS
     const float interval_length = c0_interval_length;
     const float interval_start = c0_interval_length * cascade_index;
     #else
