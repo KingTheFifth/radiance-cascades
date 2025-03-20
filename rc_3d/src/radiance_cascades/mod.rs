@@ -1,6 +1,7 @@
 use bytemuck::{Pod, Zeroable};
+use cascade_fbo::CascadeFBO;
 use microglut::{
-    glam::{Mat4, Vec2},
+    glam::Vec2,
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
         DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, READ_FRAMEBUFFER, READ_ONLY, RGBA16F,
@@ -9,10 +10,9 @@ use microglut::{
     imgui, LoadShaders,
 };
 
-use crate::{
-    camera::Camera, cascade_fbo::CascadeFBO, quad_renderer::QuadRenderer, scene_fbo::SceneFBO,
-    voxelizer::Voxelizer,
-};
+use crate::{quad_renderer::QuadRenderer, scene_fbo::SceneFBO, voxelizer::Voxelizer};
+
+mod cascade_fbo;
 
 /// Rounds up a number to a power of n.
 /// # Examples

@@ -12,6 +12,13 @@ uniform bool merge_cascades;
 
 out vec4 color;
 
+#define NAIVE_SS 0
+#define HI_Z 1
+#define VOXEL 2
+#define TRACE_METHOD VOXEL
+
+#define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
+
 layout(std430) readonly buffer RCConstants {
     vec2 c0_resolution;
     float num_cascades;
@@ -159,7 +166,7 @@ void min_max_hi_z_traversal(
 
 // ray_start, ray_end and hit point are all in screen space
 // returns true if hit, false if miss
-bool trace(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) {
+bool trace_hi_z(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_point) {
     
     // Map ray ray_end point from (pixel coordinate, depth) to (UV coordinate, depth)
     ray_start.xy *= inv_hi_z_resolution;
@@ -205,7 +212,7 @@ vec3 srgb_to_linear(vec3 c) {
     return pow(c.rgb, vec3(1.0 / 1.6));
 }
 
-vec4 trace_radiance(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
+vec4 trace_radiance_hi_z(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
     const vec3 ray_end_vs = ray_start_vs + ray_dir_vs * interval_length;
 
     const vec3 ray_start_ss = view_pos_to_screen_pos(ray_start_vs).xyz;
@@ -213,16 +220,15 @@ vec4 trace_radiance(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
 
     vec3 hit_point_ss = vec3(-1.0, -1.0, 0.0);
     float iters = 0.0;
-    bool missed = trace(ray_start_ss, ray_end_ss, iters, hit_point_ss);
+    bool missed = trace_hi_z(ray_start_ss, ray_end_ss, iters, hit_point_ss);
     // Alpha channel tracks occlusion such that 0.0 means the ray hit an occluder
-    return missed ? vec4(vec3(0.0, 0.2, 0.2), 0.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
-    //return missed ? vec4(vec3(0.0), 1.0) : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
+    return missed ? MISS_COLOR : vec4(linear_to_srgb(texture(scene_emissive, hit_point_ss.xy * screen_res_inv).rgb), 0.0);
 }
 
-vec4 trace_radiance_naive(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
+vec4 trace_radiance_naive_screen_space(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
     vec3 ray_end_vs = ray_start_vs + ray_dir_vs * interval_length;
 
-    float steps = float(20 * (2 << (int(cascade_index) + 1)));
+    float steps = float(20 * (2 << (int(cascade_index) + 1)));  // TODO: Make configurable
     float step_count_inv = 1.0 / (steps - 1.0);
     for (float i = 0.0; i < steps; i++) {
         float traveled_distance = i * step_count_inv;
@@ -239,7 +245,7 @@ vec4 trace_radiance_naive(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_len
             return vec4(linear_to_srgb(texture(scene_emissive, ray_ss.xy * screen_res_inv).rgb), 0.0);
         }
     }
-    return vec4(0.0, 0.0, 0.0, 1.0);
+    return MISS_COLOR;
 }
 
 vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
@@ -251,7 +257,7 @@ vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
             return vec4(linear_to_srgb(curr_sample.rgb), 0.0);
         }
     }
-    return vec4(0.0, 0.0, 0.0, 1.0);
+    return MISS_COLOR;
 }
 
 vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within_block) {
@@ -272,7 +278,6 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
     // Calculate bottom-left pixel of the direction block of the higher cascade to merge with
     //vec2 prev_dir_block_index = vec2(dir_index, )
 
-    
     // Merge this ray direction with the two closest directions in the upper cascade
     vec4 upper_radiance = vec4(0.0);
     for (float i = 0.0; i < 2.0; i++) {
@@ -305,7 +310,6 @@ void main() {
     const vec2 dir_block_index = floor(pixel_coord / probe_count);
 
     const float interval_length = c0_interval_length * pow(4.0, cascade_index);
-    //const float interval_length = 40.0;
     const float interval_start = c0_interval_length * ((1.0 - pow(4.0, cascade_index)) / (1.0 - 4.0));
 
     const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
@@ -316,7 +320,7 @@ void main() {
 
     if (min_probe_pos_ss.z >= 0.99999) {
         // Do not calculate probes placed in the sky/out of bounds
-        color = vec4(0.0, 0.0, 0.0, 1.0);
+        color = MISS_COLOR;
         return;
     }
 
@@ -326,19 +330,26 @@ void main() {
         cos(ray_azimuth)*sin(ray_altitude),
         cos(ray_altitude),
         sin(ray_azimuth)*sin(ray_altitude)
-    )); //TODO: invert sign of some component?
+    ));
     const vec3 ray_dir_vs = normalize(mat3(world_to_view) * vec3(
         cos(ray_azimuth)*sin(ray_altitude),
         cos(ray_altitude),
         sin(ray_azimuth)*sin(ray_altitude)
-    )); //TODO: invert sign of some component?
+    ));
 
     // TODO: Trace both min and max depth probes at the same time somehow
-    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
-    const vec3 ray_start_vs = min_probe_pos_vs.xyz + ray_dir_vs * interval_start;
-    //vec4 radiance_min = trace_radiance(ray_start_vs, ray_dir_vs, interval_length);
-    //vec4 radiance_min = trace_radiance_naive(ray_start_ws, ray_dir_ws, interval_length);
+    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start + ray_dir_ws * 0.1;
+    const vec3 ray_start_vs = min_probe_pos_vs.xyz + ray_dir_vs * interval_start + ray_dir_vs * 0.1;
+
+    #if (TRACE_METHOD == NAIVE_SS)
+    vec4 radiance_min = trace_radiance_naive_screen_space(ray_start_ws, ray_dir_ws, interval_length);
+    #elif (TRACE_METHOD == HI_Z)
+    vec4 radiance_min = trace_radiance_hi_z(ray_start_vs, ray_dir_vs, interval_length);
+    #elif (TRACE_METHOD == VOXEL)
     vec4 radiance_min = trace_radiance_voxel(ray_start_ws, ray_dir_ws, interval_length);
+    #else
+    #error "Invalid tracing method"
+    #endif
 
     vec4 unmerged_radiance = radiance_min;
     vec4 merged_radiance = merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block);

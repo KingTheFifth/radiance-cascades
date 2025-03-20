@@ -5,16 +5,15 @@ use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
 use camera::Camera;
-use cascade_fbo::CascadeFBO;
 use microglut::{
     delta_time, elapsed_time,
     glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, BLEND, COLOR_ATTACHMENT0,
-        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEBUG_OUTPUT, DEPTH_BUFFER_BIT, DEPTH_TEST,
+        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEPTH_BUFFER_BIT, DEPTH_TEST,
         DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
-        READ_ONLY, RGBA16F, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1,
-        TEXTURE2, TEXTURE3, TEXTURE_2D, TEXTURE_MAX_LEVEL,
+        SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D,
+        TEXTURE_MAX_LEVEL,
     },
     imgui, load_shaders,
     sdl2::{
@@ -40,7 +39,6 @@ fn debug_message_callback(_source: u32, _type: u32, _id: u32, severity: u32, mes
 }
 
 mod camera;
-mod cascade_fbo;
 mod object;
 mod quad_renderer;
 mod radiance_cascades;

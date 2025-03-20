@@ -34,6 +34,6 @@ void main() {
 
     // TODO: Store normals in a separate 3D texture
     // TODO: Store through atomic averaging as several fragments may belong to the same voxel
-    imageStore(voxel_tex, voxel_pos, frag_albedo);
-    //imageStore(voxel_tex, voxel_pos, frag_emissive);
+    //imageStore(voxel_tex, voxel_pos, frag_albedo);
+    imageStore(voxel_tex, voxel_pos, frag_emissive);
 }
