@@ -21,7 +21,8 @@ out vec4 color;
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
 #define NORMAL_OFFSET 0.05
 
-#define DEBUG_INTERVALS 0 // Use c0 interval length for all cascades
+// Use c0 interval length for all cascades
+#define DEBUG_INTERVALS true
 
 layout(std430) readonly buffer RCConstants {
     vec2 c0_resolution;
@@ -309,11 +310,11 @@ void main() {
         probe_count.y * num_altitudinal_rays
     );  // Note: the width should remain constant and the height should half for every cascade
 
-    const vec2 pixel_coord = floor(tex_coord * cascade_res);
+    const vec2 pixel_coord = gl_FragCoord.xy;
     const vec2 coord_within_dir_block = mod(pixel_coord, probe_count);
     const vec2 dir_block_index = floor(pixel_coord / probe_count);
 
-    #ifdef DEBUG_INTERVALS
+    #if (DEBUG_INTERVALS == true)
     const float interval_length = c0_interval_length;
     const float interval_start = c0_interval_length * cascade_index;
     #else
@@ -333,18 +334,14 @@ void main() {
         return;
     }
 
-    const float ray_azimuth = (dir_block_index.x + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays * 1.0));
+    const float ray_azimuth = (dir_block_index.x + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays));
     const float ray_altitude = altitudes[int(dir_block_index.y)];
     const vec3 ray_dir_ws = normalize(vec3(
         cos(ray_azimuth)*sin(ray_altitude),
         cos(ray_altitude),
         sin(ray_azimuth)*sin(ray_altitude)
     ));
-    const vec3 ray_dir_vs = normalize(mat3(world_to_view) * vec3(
-        cos(ray_azimuth)*sin(ray_altitude),
-        cos(ray_altitude),
-        sin(ray_azimuth)*sin(ray_altitude)
-    ));
+    const vec3 ray_dir_vs = normalize(mat3(world_to_view) * ray_dir_ws);
 
     // TODO: Trace both min and max depth probes at the same time somehow
     const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;

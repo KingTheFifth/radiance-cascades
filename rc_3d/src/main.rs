@@ -359,7 +359,18 @@ impl MicroGLUT for App {
             screen_width as f32 / screen_height as f32,
         );
 
-        let radiance_cascades = RadianceCascades::new(gl, 4.0, screen_resolution, 2.0, 2);
+        let scene_matrices_binding = 0;
+        let hi_z_constants_binding = 1;
+        let rc_binding = 2;
+        let radiance_cascades = RadianceCascades::new(
+            gl,
+            4.0,
+            screen_resolution,
+            2.0,
+            rc_binding,
+            scene_matrices_binding,
+            hi_z_constants_binding,
+        );
 
         let scene_matrices = SceneMatrices {
             world_to_view: camera.view_transform(),
@@ -386,7 +397,6 @@ impl MicroGLUT for App {
             gl.enable(MULTISAMPLE);
 
             // Create and bind shader storage buffer objects
-            let scene_matrices_binding = 0;
             let scene_matrices_ssbo = gl.create_buffer().unwrap();
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(scene_matrices_ssbo));
             gl.buffer_data_u8_slice(
@@ -400,7 +410,6 @@ impl MicroGLUT for App {
                 Some(scene_matrices_ssbo),
             );
 
-            let hi_z_constants_binding = 1;
             let hi_z_constants_ssbo = gl.create_buffer().unwrap();
             gl.bind_buffer(SHADER_STORAGE_BUFFER, Some(hi_z_constants_ssbo));
             gl.buffer_data_u8_slice(
@@ -533,8 +542,6 @@ impl MicroGLUT for App {
                         gl,
                         self.screen_resolution,
                         &self.scene,
-                        self.scene_matrices_binding,
-                        self.hi_z_constants_binding,
                         &self.voxelizer,
                     );
                 }
@@ -594,14 +601,8 @@ impl MicroGLUT for App {
                 }
             }
         } else {
-            self.radiance_cascades.render(
-                gl,
-                self.screen_resolution,
-                &self.scene,
-                self.scene_matrices_binding,
-                self.hi_z_constants_binding,
-                &self.voxelizer,
-            );
+            self.radiance_cascades
+                .render(gl, self.screen_resolution, &self.scene, &self.voxelizer);
         }
         let t_end = elapsed_time();
         println!("Time to render: {:?}", t_end - t_start);
@@ -655,8 +656,9 @@ impl MicroGLUT for App {
 
     fn mouse_moved_rel(&mut self, xrel: i32, yrel: i32) {
         if self.mouse_is_down {
-            let rotation = (Quat::from_rotation_y(2.0 * -xrel as f32 / self.screen_resolution.x)
-                * Quat::from_rotation_x(2.0 * yrel as f32 / self.screen_resolution.y))
+            let speed = self.camera.rotational_speed;
+            let rotation = (Quat::from_rotation_y(speed * -xrel as f32 / self.screen_resolution.x)
+                * Quat::from_rotation_x(speed * yrel as f32 / self.screen_resolution.y))
             .normalize();
             self.camera.rotate(rotation);
         }

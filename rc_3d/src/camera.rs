@@ -2,7 +2,6 @@ use std::f32::consts::PI;
 
 use microglut::{
     glam::{Mat4, Quat, Vec3},
-    glow::Context,
     imgui,
 };
 
