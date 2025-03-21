@@ -19,7 +19,7 @@ out vec4 color;
 #define TRACE_METHOD VOXEL
 
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
-#define NORMAL_OFFSET 0.05
+#define NORMAL_OFFSET 0.1
 
 // Uncomment to use c0 interval length for all cascades
 #define DEBUG_INTERVALS
@@ -54,6 +54,7 @@ layout(std430) readonly buffer SceneMatrices {
 uniform float step_length;
 uniform float step_count;
 uniform mat4 world_to_voxel;
+uniform vec3 voxel_resolution;
 layout(binding = 0, rgba16f) uniform readonly image3D voxel_tex;
 
 const float DIR_EPS_X = 0.001;
@@ -260,6 +261,9 @@ vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
         const vec3 curr_point = ray_start_ws + ray_dir_ws * s * step_length;
         const vec3 sample_point = (world_to_voxel * vec4(curr_point, 1.0)).xyz;
         const vec4 curr_sample = imageLoad(voxel_tex, ivec3(sample_point));
+        if (any(lessThan(sample_point, vec3(0.0))) || any(greaterThanEqual(sample_point, voxel_resolution))) {
+            return MISS_COLOR;
+        }
         if (curr_sample.a > 0.05) {
             return vec4(linear_to_srgb(curr_sample.rgb), 0.0);
         }
@@ -325,9 +329,10 @@ void main() {
     #endif
 
     const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
+    const vec3 normal_vs = octahedral_decode(texture(scene_normal, probe_pixel * screen_res_inv).xy);
     const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
-    const vec4 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss) + texture(scene_normal, probe_pixel * screen_res_inv) * NORMAL_OFFSET;
-    const vec3 min_probe_pos_ws = (world_to_view_inv * min_probe_pos_vs).xyz;
+    const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * NORMAL_OFFSET;
+    const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(min_probe_pos_vs, 1.0)).xyz;
     //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
     if (min_probe_pos_ss.z >= 0.99999) {
@@ -347,10 +352,10 @@ void main() {
 
     // TODO: Trace both min and max depth probes at the same time somehow
     const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
-    const vec3 ray_start_vs = min_probe_pos_vs.xyz + ray_dir_vs * interval_start;
+    const vec3 ray_start_vs = min_probe_pos_vs + ray_dir_vs * interval_start;
 
     #if (TRACE_METHOD == NAIVE_SS)
-    vec4 radiance_min = trace_radiance_naive_screen_space(ray_start_ws, ray_dir_ws, interval_length);
+    vec4 radiance_min = trace_radiance_naive_screen_space(ray_start_vs, ray_dir_vs, interval_length);
     #elif (TRACE_METHOD == HI_Z)
     vec4 radiance_min = trace_radiance_hi_z(ray_start_vs, ray_dir_vs, interval_length);
     #elif (TRACE_METHOD == VOXEL)
@@ -363,8 +368,9 @@ void main() {
     vec4 merged_radiance = merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block);
     color = merge_cascades ? merged_radiance : unmerged_radiance;
 
-    //color = vec4(screen_pos_to_view_pos(min_probe_pos_ss).xyz, 1.0);
     //color = vec4(dir_block_index / vec2(num_azimuthal_rays, num_altitudinal_rays), 0.0, 1.0);
     //color = vec4(coord_within_dir_block / probe_count, 0.0, 1.0);
     //color = vec4(ray_dir_vs, 1.0);
+    //color = vec4(normal_vs, 1.0);
+    //color = vec4(min_probe_pos_ws / 5.0, 1.0);
 }

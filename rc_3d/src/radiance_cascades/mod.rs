@@ -259,6 +259,11 @@ impl RadianceCascades {
                 false,
                 voxelizer.world_to_voxel().as_ref(),
             );
+            gl.uniform_3_f32_slice(
+                gl.get_uniform_location(self.cascade_program, "voxel_resolution")
+                    .as_ref(),
+                voxelizer.resolution().as_ref(),
+            );
 
             for n in (0..self.constants.cascade_count as i32).rev() {
                 gl.uniform_1_f32(
