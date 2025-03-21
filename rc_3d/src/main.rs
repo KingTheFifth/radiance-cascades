@@ -339,7 +339,7 @@ impl MicroGLUT for App {
 
         let scene = SceneFBO::init(gl, screen_width, screen_height);
 
-        let voxel_res = 128.0;
+        let voxel_res = 256.0;
         let voxel_origin = Vec3::new(0.0, 0.0, 0.0);
         let voxel_volume_half_side = 6.0;
         let voxelizer = Voxelizer::new(
@@ -469,6 +469,10 @@ impl MicroGLUT for App {
                 Model::load_obj_data(gl, include_bytes!("../models/cube.obj"), None, None);
             let cube = Object::new(cube_model);
 
+            let suzanne_model =
+                Model::load_obj_data(gl, include_bytes!("../models/suzanne.obj"), None, None);
+            let suzanne = Object::new(suzanne_model);
+
             //let objects = vec![
             //    Object::new(rock.clone())
             //        .with_rotation(Quat::from_rotation_x(-0.2))
@@ -499,10 +503,15 @@ impl MicroGLUT for App {
                     .with_albedo(Vec4::new(0.05, 0.1, 1., 1.))
                     .with_scale(Vec3::new(5., 0.25, 5.))
                     .with_translation(Vec3::new(0., -0.25, 0.)), //.with_emissive(Vec4::new(0.0, 0.0, 0.3, 1.0)),
-                                                                 //cube.clone()
-                                                                 //    .with_albedo(Vec4::new(1.0, 0.0, 0.0, 1.0))
-                                                                 //    .with_emissive(Vec4::new(1.0, 0.0, 0.0, 1.0))
-                                                                 //    .with_translation(Vec3::new(2.0, 1.1, 0.0)),
+                //cube.clone()
+                //    .with_albedo(Vec4::new(1.0, 0.0, 0.0, 1.0))
+                //    .with_emissive(Vec4::new(1.0, 0.0, 0.0, 1.0))
+                //    .with_translation(Vec3::new(2.0, 1.1, 0.0)),
+                suzanne
+                    .clone()
+                    .with_albedo(Vec4::ONE)
+                    .with_rotation(Quat::from_rotation_y(-PI * 0.25))
+                    .with_translation(Vec3::new(6.0, 0.0, -2.0)),
             ];
 
             App {
