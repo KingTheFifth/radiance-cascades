@@ -339,7 +339,7 @@ impl MicroGLUT for App {
 
         let scene = SceneFBO::init(gl, screen_width, screen_height);
 
-        let voxel_res = 256.0;
+        let voxel_res = 128.0;
         let voxel_origin = Vec3::new(0.0, 0.0, 0.0);
         let voxel_volume_half_side = 6.0;
         let voxelizer = Voxelizer::new(
@@ -494,11 +494,15 @@ impl MicroGLUT for App {
                 cube.clone()
                     .with_emissive(Vec4::new(0.7, 0.7, 0.7, 1.0))
                     .with_albedo(Vec4::W)
-                    .with_translation(Vec3::new(0., 1., 2.)),
+                    .with_translation(Vec3::new(0., 1.1, 2.)),
                 cube.clone()
-                    .with_albedo(Vec4::new(0., 0.1, 1., 1.))
-                    .with_uniform_scale(10.)
-                    .with_translation(Vec3::new(0., -10., 0.)),
+                    .with_albedo(Vec4::new(0.05, 0.1, 1., 1.))
+                    .with_scale(Vec3::new(5., 0.25, 5.))
+                    .with_translation(Vec3::new(0., -0.25, 0.)), //.with_emissive(Vec4::new(0.0, 0.0, 0.3, 1.0)),
+                                                                 //cube.clone()
+                                                                 //    .with_albedo(Vec4::new(1.0, 0.0, 0.0, 1.0))
+                                                                 //    .with_emissive(Vec4::new(1.0, 0.0, 0.0, 1.0))
+                                                                 //    .with_translation(Vec3::new(2.0, 1.1, 0.0)),
             ];
 
             App {
