@@ -46,7 +46,8 @@ struct RadianceCascadesConstants {
     cascade_count: f32,
     c0_probe_spacing: f32,
     c0_interval_length: f32,
-    _padding: [f32; 3],
+    normal_offset: f32,
+    _padding: [f32; 2],
 }
 
 pub struct RadianceCascades {
@@ -117,7 +118,8 @@ impl RadianceCascades {
             c0_probe_spacing: probe_spacing_adjusted,
             c0_resolution,
             cascade_count,
-            _padding: [0.0, 0.0, 0.0],
+            normal_offset: 0.1,
+            _padding: [0.0, 0.0],
         };
         let constants_ssbo_binding = binding_point;
         let constants_ssbo = constants.create_shader_storage_buffer(gl, constants_ssbo_binding);
@@ -242,11 +244,6 @@ impl RadianceCascades {
                 0,
                 READ_ONLY,
                 RGBA16F,
-            );
-            gl.uniform_1_f32(
-                gl.get_uniform_location(self.cascade_program, "step_length")
-                    .as_ref(),
-                voxelizer.step_length(),
             );
             gl.uniform_1_f32(
                 gl.get_uniform_location(self.cascade_program, "step_count")
@@ -407,10 +404,12 @@ impl RadianceCascades {
     pub fn ui(&mut self, gl: &Context, ui: &imgui::Ui) {
         let mut constants_changed = false;
         if ui.tree_node("Radiance cascades").is_some() {
-            constants_changed = constants_changed
-                || ui
-                    .input_scalar("Cascade index", &mut self.debug_cascade_index)
-                    .build();
+            ui.input_scalar("Cascade index", &mut self.debug_cascade_index)
+                .build();
+
+            constants_changed =
+                constants_changed || ui.checkbox("Merged cascades", &mut self.merge_cascades);
+
             constants_changed = constants_changed
                 || ui.slider(
                     "Interval length",
@@ -418,8 +417,9 @@ impl RadianceCascades {
                     50.0,
                     &mut self.constants.c0_interval_length,
                 );
-            constants_changed =
-                constants_changed || ui.checkbox("Merged cascades", &mut self.merge_cascades);
+
+            constants_changed = constants_changed
+                || ui.slider("Normal offset", 0.0, 0.5, &mut self.constants.normal_offset);
 
             ui.slider("Ambient level", 0.0, 1.0, &mut self.ambient_level);
         }

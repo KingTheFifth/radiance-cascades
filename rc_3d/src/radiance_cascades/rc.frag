@@ -19,16 +19,16 @@ out vec4 color;
 #define TRACE_METHOD VOXEL
 
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
-#define NORMAL_OFFSET 0.1
 
 // Uncomment to use c0 interval length for all cascades
-#define DEBUG_INTERVALS
+//#define DEBUG_INTERVALS
 
 layout(std430) readonly buffer RCConstants {
     vec2 c0_resolution;
     float num_cascades;
     float c0_probe_spacing;
     float c0_interval_length;
+    float normal_offset;    // Offset probe position along surface normals
 };
 
 layout(std430) readonly buffer HiZConstants {
@@ -51,7 +51,6 @@ layout(std430) readonly buffer SceneMatrices {
     vec2 screen_res_inv;
 };
 
-uniform float step_length;
 uniform float step_count;
 uniform mat4 world_to_voxel;
 uniform vec3 voxel_resolution;
@@ -257,11 +256,13 @@ vec4 trace_radiance_naive_screen_space(vec3 ray_start_vs, vec3 ray_dir_vs, float
 }
 
 vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_length) {
-    for (float s = 0.0; s < step_count && s * step_length <= interval_length; s++) {
-        const vec3 curr_point = ray_start_ws + ray_dir_ws * s * step_length;
-        const vec3 sample_point = (world_to_voxel * vec4(curr_point, 1.0)).xyz;
-        const vec4 curr_sample = imageLoad(voxel_tex, ivec3(sample_point));
-        if (any(lessThan(sample_point, vec3(0.0))) || any(greaterThanEqual(sample_point, voxel_resolution))) {
+    const vec3 ray_end_ws = ray_start_ws + ray_dir_ws * interval_length;
+    const float step_count_inv = 1.0 / (step_count - 1.0);
+    for (float s = 0.0; s < step_count; s++) {
+        const vec3 curr_point = mix(ray_start_ws, ray_end_ws, s * step_count_inv);
+        const vec3 voxel = (world_to_voxel * vec4(curr_point, 1.0)).xyz;
+        const vec4 curr_sample = imageLoad(voxel_tex, ivec3(voxel));
+        if (any(lessThan(voxel, vec3(0.0))) || any(greaterThanEqual(voxel, voxel_resolution))) {
             return MISS_COLOR;
         }
         if (curr_sample.a > 0.05) {
@@ -292,7 +293,7 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
     // Merge this ray direction with the two closest directions in the upper cascade
     vec4 upper_radiance = vec4(0.0);
     for (float i = 0.0; i < 2.0; i++) {
-        vec2 branched_dir_index = dir_index * vec2(2.0, 1.0);
+        vec2 branched_dir_index = dir_index * vec2(2.0, 1.0) + vec2(i, 0.0);
         vec2 interpolation_point = branched_dir_index * upper_cascade_probe_count; // Bottom left probe texel
 
         // Get the texel of the closest probe in the higher cascade and add an offset to interpolate
@@ -302,7 +303,7 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
         upper_radiance += texture(prev_cascade, interpolation_point * upper_cascade_res_inv);
     }
     // TODO: Should the upper radiance (and occlusion?) be divided by the number of upper rays to merge with?
-    return radiance + upper_radiance * vec4(vec3(0.5), 1.0);
+    return radiance + upper_radiance * 0.5;//vec4(vec3(0.5), 1.0);
 }
 
 void main() {
@@ -331,7 +332,7 @@ void main() {
     const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
     const vec3 normal_vs = octahedral_decode(texture(scene_normal, probe_pixel * screen_res_inv).xy);
     const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
-    const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * NORMAL_OFFSET;
+    const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * normal_offset;
     const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(min_probe_pos_vs, 1.0)).xyz;
     //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
