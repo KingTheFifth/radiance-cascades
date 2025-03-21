@@ -9,6 +9,8 @@ uniform sampler2D scene_albedo;
 uniform sampler2D scene_emissive;
 uniform float cascade_index;
 
+uniform float ambient;
+
 layout(std430) readonly buffer RCConstants {
     vec2 c0_resolution;
     float num_cascades;
@@ -75,6 +77,6 @@ void main() {
 
     const vec4 albedo = texture(scene_albedo, tex_coord);
     const vec3 emissive = texture(scene_emissive, tex_coord).rgb;
-    color = vec4(srgb_to_linear(albedo.rgb * radiance + emissive), albedo.a);
+    color = vec4(srgb_to_linear(albedo.rgb * (radiance + ambient) + emissive), albedo.a);
     //color = vec4(srgb_to_linear(texture(merged_cascade_0, tex_coord).rgb), 1.0);
 }

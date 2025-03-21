@@ -58,6 +58,7 @@ pub struct RadianceCascades {
     constants: RadianceCascadesConstants,
     constants_ssbo: NativeBuffer,
     constants_ssbo_binding: u32,
+    ambient_level: f32,
 
     // Debug info
     merge_cascades: bool,
@@ -178,6 +179,7 @@ impl RadianceCascades {
             constants_ssbo_binding,
             merge_cascades: true,
             debug_cascade_index: 0,
+            ambient_level: 0.1,
         }
     }
 
@@ -324,6 +326,11 @@ impl RadianceCascades {
                     .as_ref(),
                 cascade_index as _,
             );
+            gl.uniform_1_f32(
+                gl.get_uniform_location(self.integration_program, "ambient")
+                    .as_ref(),
+                self.ambient_level,
+            );
 
             self.cascades
                 .bind_cascade_as_texture(gl, cascade_index, TEXTURE0);
@@ -408,6 +415,8 @@ impl RadianceCascades {
                 );
             constants_changed =
                 constants_changed || ui.checkbox("Merged cascades", &mut self.merge_cascades);
+
+            ui.slider("Ambient level", 0.0, 1.0, &mut self.ambient_level);
         }
 
         if constants_changed {
