@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate load_file;
 
-use std::f32::consts::PI;
+use std::{collections::VecDeque, f32::consts::PI};
 
 use bytemuck::{Pod, Zeroable};
 use camera::Camera;
@@ -108,6 +108,7 @@ struct App {
     debug_mode: DebugMode,
 
     mouse_is_down: bool,
+    frame_times: VecDeque<f32>,
 }
 
 impl App {
@@ -364,7 +365,7 @@ impl MicroGLUT for App {
         let rc_binding = 2;
         let radiance_cascades = RadianceCascades::new(
             gl,
-            4.0,
+            5.0,
             screen_resolution,
             2.0,
             rc_binding,
@@ -473,6 +474,14 @@ impl MicroGLUT for App {
                 Model::load_obj_data(gl, include_bytes!("../models/suzanne.obj"), None, None);
             let suzanne = Object::new(suzanne_model);
 
+            let armadillo_model =
+                Model::load_obj_data(gl, include_bytes!("../models/armadillo.obj"), None, None);
+            let armadillo = Object::new(armadillo_model);
+
+            let sphere_model =
+                Model::load_obj_data(gl, include_bytes!("../models/groundsphere.obj"), None, None);
+            let sphere = Object::new(sphere_model);
+
             //let objects = vec![
             //    Object::new(rock.clone())
             //        .with_rotation(Quat::from_rotation_x(-0.2))
@@ -499,9 +508,14 @@ impl MicroGLUT for App {
                     .with_emissive(Vec4::new(0.7, 0.7, 0.7, 1.0))
                     .with_albedo(Vec4::W)
                     .with_translation(Vec3::new(0., 1.1, 2.)),
+                //sphere
+                //    .clone()
+                //    .with_emissive(Vec4::new(0.7, 0.7, 0.7, 1.0))
+                //    .with_albedo(Vec4::W)
+                //    .with_translation(Vec3::new(0.0, -1.0, 2.0)),
                 cube.clone()
                     .with_albedo(Vec4::new(0.05, 0.1, 1., 1.))
-                    .with_scale(Vec3::new(5., 0.25, 5.))
+                    .with_scale(Vec3::new(10., 0.25, 10.))
                     .with_translation(Vec3::new(0., -0.25, 0.)), //.with_emissive(Vec4::new(0.0, 0.0, 0.3, 1.0)),
                 //cube.clone()
                 //    .with_albedo(Vec4::new(1.0, 0.0, 0.0, 1.0))
@@ -512,6 +526,20 @@ impl MicroGLUT for App {
                     .with_albedo(Vec4::ONE)
                     .with_rotation(Quat::from_rotation_y(-PI * 0.25))
                     .with_translation(Vec3::new(6.0, 0.0, -2.0)),
+                //sphere
+                //    .clone()
+                //    .with_albedo(Vec4::new(1.0, 1.0, 1.0, 0.2))
+                //    .with_uniform_scale(radiance_cascades.c0_interval_length())
+                //    .with_translation(Vec3::new(0.0, -radiance_cascades.c0_interval_length(), 2.0)),
+                //sphere
+                //    .clone()
+                //    .with_albedo(Vec4::new(1.0, 1.0, 1.0, 0.2))
+                //    .with_uniform_scale(2.0 * radiance_cascades.c0_interval_length())
+                //    .with_translation(Vec3::new(
+                //        0.0,
+                //        -2.0 * radiance_cascades.c0_interval_length(),
+                //        2.0,
+                //    )),
             ];
 
             App {
@@ -534,6 +562,7 @@ impl MicroGLUT for App {
                 quad_renderer,
                 camera,
                 radiance_cascades,
+                frame_times: VecDeque::new(),
             }
         }
     }
@@ -618,7 +647,12 @@ impl MicroGLUT for App {
                 .render(gl, self.screen_resolution, &self.scene, &self.voxelizer);
         }
         let t_end = elapsed_time();
-        println!("Time to render: {:?}", t_end - t_start);
+        self.frame_times.push_back(t_end - t_start);
+        if self.frame_times.len() > 100 {
+            self.frame_times.rotate_left(self.frame_times.len() - 100);
+            self.frame_times.truncate(100);
+        }
+        //println!("Time to render: {:?}", t_end - t_start);
     }
 
     fn key_down(
@@ -727,6 +761,11 @@ impl MicroGLUT for App {
                 );
             }
         }
+
+        let fps = self.frame_times.len() as f32 / self.frame_times.iter().sum::<f32>();
+        ui.plot_lines("Frame times", self.frame_times.make_contiguous())
+            .overlay_text(format!("FPS {}", fps))
+            .build();
     }
 }
 
