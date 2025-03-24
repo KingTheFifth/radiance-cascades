@@ -4,7 +4,7 @@ use microglut::{
     glam::Vec2,
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
-        DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, READ_FRAMEBUFFER, READ_ONLY, RGBA16F,
+        DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, READ_FRAMEBUFFER, READ_ONLY, RG16F, RGBA16F,
         SHADER_STORAGE_BUFFER, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE3, TEXTURE4,
         TEXTURE_2D,
     },
@@ -245,6 +245,7 @@ impl RadianceCascades {
                 READ_ONLY,
                 RGBA16F,
             );
+            gl.bind_image_texture(1, voxelizer.voxel_normal(), 0, false, 0, READ_ONLY, RG16F);
             gl.uniform_1_f32(
                 gl.get_uniform_location(self.cascade_program, "step_count")
                     .as_ref(),

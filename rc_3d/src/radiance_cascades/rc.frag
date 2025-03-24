@@ -21,7 +21,7 @@ out vec4 color;
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
 
 // Uncomment to use c0 interval length for all cascades
-//#define DEBUG_INTERVALS
+#define DEBUG_INTERVALS
 
 layout(std430) readonly buffer RCConstants {
     vec2 c0_resolution;
@@ -55,6 +55,7 @@ uniform float step_count;
 uniform mat4 world_to_voxel;
 uniform vec3 voxel_resolution;
 layout(binding = 0, rgba16f) uniform readonly image3D voxel_tex;
+layout(binding = 1, rg16f) uniform readonly image3D voxel_normal;
 
 const float DIR_EPS_X = 0.001;
 const float DIR_EPS_Y = 0.001;
@@ -266,6 +267,10 @@ vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
             return MISS_COLOR;
         }
         if (curr_sample.a > 0.05) {
+            //vec3 sample_normal = octahedral_decode(imageLoad(voxel_normal, ivec3(voxel)).xy);
+            //if (dot(sample_normal, ray_dir_ws) <= 0.0) {
+            //    return vec4(linear_to_srgb(curr_sample.rgb), 0.0);
+            //}
             return vec4(linear_to_srgb(curr_sample.rgb), 0.0);
         }
     }

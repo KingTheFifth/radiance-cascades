@@ -4,8 +4,8 @@ use microglut::{
         Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeTexture,
         NativeVertexArray, ARRAY_BUFFER, BLEND, CLAMP_TO_EDGE, COLOR_ATTACHMENT0, COLOR_BUFFER_BIT,
         CULL_FACE, DEPTH_ATTACHMENT, DEPTH_BUFFER_BIT, DEPTH_COMPONENT16, DEPTH_TEST,
-        ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, LINEAR, NEAREST, READ_ONLY, RENDERBUFFER, RGBA,
-        RGBA16, RGBA16F, RGBA8, STATIC_DRAW, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D,
+        ELEMENT_ARRAY_BUFFER, FLOAT, FRAMEBUFFER, LINEAR, NEAREST, READ_ONLY, RENDERBUFFER, RG,
+        RG16F, RGBA, RGBA16, RGBA16F, RGBA8, STATIC_DRAW, TEXTURE_2D_MULTISAMPLE, TEXTURE_3D,
         TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
         TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
     },
@@ -26,6 +26,7 @@ pub struct Voxelizer {
     volume_half_side: f32,
 
     voxel_texture: NativeTexture,
+    voxel_normal: NativeTexture,
     voxelizer_program: NativeProgram,
     instanced_visualizing_program: NativeProgram,
     clear_program: NativeProgram,
@@ -87,6 +88,27 @@ impl Voxelizer {
             );
             gl.bind_texture(TEXTURE_3D, None);
 
+            let voxel_normal = gl.create_texture().unwrap();
+            gl.bind_texture(TEXTURE_3D, Some(voxel_normal));
+            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_WRAP_R, CLAMP_TO_EDGE as _);
+            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_WRAP_S, CLAMP_TO_EDGE as _);
+            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_WRAP_T, CLAMP_TO_EDGE as _);
+            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_MAG_FILTER, NEAREST as _);
+            gl.tex_parameter_i32(TEXTURE_3D, TEXTURE_MIN_FILTER, LINEAR as _);
+            gl.tex_image_3d(
+                TEXTURE_3D,
+                0,
+                RG16F as _,
+                resolution.x as _,
+                resolution.y as _,
+                resolution.z as _,
+                0,
+                RG,
+                UNSIGNED_BYTE,
+                None,
+            );
+            gl.bind_texture(TEXTURE_3D, None);
+
             let msaa_fbo = gl.create_framebuffer().unwrap();
             gl.bind_framebuffer(FRAMEBUFFER, Some(msaa_fbo));
 
@@ -124,6 +146,7 @@ impl Voxelizer {
                 origin,
                 volume_half_side,
                 voxel_texture,
+                voxel_normal,
                 voxelizer_program,
                 tracer_program: visualizing_program,
                 instanced_visualizing_program,
@@ -167,6 +190,10 @@ impl Voxelizer {
         self.voxel_texture
     }
 
+    pub fn voxel_normal(&self) -> NativeTexture {
+        self.voxel_normal
+    }
+
     pub fn step_length(&self) -> f32 {
         self.tracer_step_length
     }
@@ -194,6 +221,7 @@ impl Voxelizer {
             );
 
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
+            gl.bind_image_texture(1, self.voxel_normal, 0, false, 0, WRITE_ONLY, RGBA16F);
             gl.disable(CULL_FACE);
             gl.disable(DEPTH_TEST);
             gl.disable(BLEND);
@@ -249,6 +277,7 @@ impl Voxelizer {
             );
 
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, WRITE_ONLY, RGBA16F);
+            gl.bind_image_texture(1, self.voxel_normal, 0, false, 0, WRITE_ONLY, RG16F);
 
             gl.disable(CULL_FACE);
             gl.disable(DEPTH_TEST);
@@ -371,7 +400,7 @@ impl Voxelizer {
                     .as_ref(),
                 self.tracer_step_count,
             );
-            gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16);
+            gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16F);
 
             gl.enable(BLEND);
             renderer.draw_screen_quad(gl, self.tracer_program);
@@ -408,6 +437,7 @@ impl Voxelizer {
             );
 
             gl.bind_image_texture(0, self.voxel_texture, 0, false, 0, READ_ONLY, RGBA16F);
+            gl.bind_image_texture(1, self.voxel_normal, 0, false, 0, READ_ONLY, RG16F);
 
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
             gl.enable(CULL_FACE);

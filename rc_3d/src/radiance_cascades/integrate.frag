@@ -78,5 +78,4 @@ void main() {
     const vec4 albedo = texture(scene_albedo, tex_coord);
     const vec3 emissive = texture(scene_emissive, tex_coord).rgb;
     color = vec4(srgb_to_linear(albedo.rgb * (radiance + ambient) + emissive), albedo.a);
-    //color = vec4(srgb_to_linear(texture(merged_cascade_0, tex_coord).rgb), 1.0);
 }
