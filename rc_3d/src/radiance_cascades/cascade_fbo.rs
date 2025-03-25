@@ -32,7 +32,7 @@ impl CascadeFBO {
                         0,
                         RGBA32F as _,
                         c0_res.x as _,
-                        (c0_res.y / 2.0_f32.powi(i)) as _,
+                        c0_res.y as _,
                         0,
                         RGBA,
                         UNSIGNED_BYTE,

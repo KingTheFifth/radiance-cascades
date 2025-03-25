@@ -50,21 +50,22 @@ void main() {
     vec3 radiance = vec3(0.0);
     vec3 normal = octahedral_decode(texture(scene_normal, tex_coord).xy);
 
-    float altitudinal_dirs = 4.0;
+    float altitudinal_dirs = 4.0 * pow(2.0, cascade_index);
     float altitudinal_dirs_inv = 1.0 / altitudinal_dirs;
     float azimuthal_dirs = 4.0 * pow(2.0, cascade_index);
     float azimuthal_dirs_inv = 1.0 / azimuthal_dirs;
     vec2 scale_bias = vec2(azimuthal_dirs_inv, altitudinal_dirs_inv);
 
     for (float alt = 0.0; alt < 4.0; alt += 1.0) {
-        const float cos_altitude = cos(altitudes[int(alt)]); 
-        const float sin_altitude = sin(altitudes[int(alt)]); 
+        const float altitude = (alt + 0.5) * (2.0 * 3.14159265 * altitudinal_dirs_inv);
+        const float cos_altitude = cos(altitude); 
+        const float sin_altitude = sin(altitude); 
 
         for (float azi = 0.0; azi < azimuthal_dirs; azi++) {
             const vec2 cone_coord = vec2(tex_coord * scale_bias + vec2(azi, alt) * scale_bias);
             const vec3 cone_radiance = texture(cascade, cone_coord).rgb;
 
-            const float azimuth = (azi + 0.5) * (2.0 * 3.14169265 * azimuthal_dirs_inv);
+            const float azimuth = (azi + 0.5) * (2.0 * 3.14159265 * azimuthal_dirs_inv);
             const vec3 cone_direction = normalize(mat3(world_to_view) * vec3(
                 cos(azimuth) * sin_altitude,
                 cos_altitude,

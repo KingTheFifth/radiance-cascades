@@ -280,7 +280,7 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
     // (Number of azimuthal directions increase by 2 each higher cascade, altitudinal stay the same)
     const vec2 upper_cascade_num_dirs = vec2(
         4.0 * pow(2.0, cascade_index + 1.0),
-        4.0
+        4.0 * pow(2.0, cascade_index + 1.0)
     );
 
     // (Number of probes decrease by 2 each higher cascade)
@@ -292,22 +292,25 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
 
     // Merge this ray direction with the two closest directions in the upper cascade
     vec4 upper_radiance = vec4(0.0);
-    for (float i = 0.0; i < 2.0; i++) {
-        vec2 branched_dir_index = dir_index * vec2(2.0, 1.0) + vec2(i, 0.0);
-        vec2 interpolation_point = branched_dir_index * upper_cascade_probe_count; // Bottom left probe texel
+    for (float alt = 0.0; alt < 2.0; alt++) {
+        for (float azi = 0.0; azi < 2.0; azi++) {
+            vec2 branched_dir_index = dir_index * vec2(2.0, 2.0) + vec2(azi, alt);
+            vec2 interpolation_point = branched_dir_index * upper_cascade_probe_count; // Bottom left probe texel
 
-        // Get the texel of the closest probe in the higher cascade and add an offset to interpolate
-        // from the 4 closest probes in the higher cascade
-        // TODO: bilateral interpolation by depth
-        interpolation_point += clamp(0.5 * coord_within_block + 0.25, vec2(0.5), upper_cascade_probe_count- 0.5);
-        upper_radiance += texture(prev_cascade, interpolation_point * upper_cascade_res_inv);
+            // Get the texel of the closest probe in the higher cascade and add an offset to interpolate
+            // from the 4 closest probes in the higher cascade
+            // TODO: bilateral interpolation by depth
+            interpolation_point += clamp(0.5 * coord_within_block + 0.25, vec2(0.5), upper_cascade_probe_count- 0.5);
+            upper_radiance += texture(prev_cascade, interpolation_point * upper_cascade_res_inv);
+
+        }
     }
     // TODO: Should the upper radiance (and occlusion?) be divided by the number of upper rays to merge with?
-    return radiance + upper_radiance * 0.5;//vec4(vec3(0.5), 1.0);
+    return radiance + upper_radiance * 0.25;//vec4(vec3(0.5), 1.0);
 }
 
 void main() {
-    const float num_altitudinal_rays = 4.0;
+    const float num_altitudinal_rays = 4.0 * pow(2.0, cascade_index);
     const float num_azimuthal_rays = 4.0 * pow(2.0, cascade_index);
 
     const vec2 probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index));
@@ -343,7 +346,8 @@ void main() {
     }
 
     const float ray_azimuth = (dir_block_index.x + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays));
-    const float ray_altitude = altitudes[int(dir_block_index.y)];
+    const float ray_altitude = (dir_block_index.y + 0.5) * (2.0 * 3.14169265 / (num_altitudinal_rays));
+    //const float ray_altitude = altitudes[int(dir_block_index.y)];
     const vec3 ray_dir_ws = normalize(vec3(
         cos(ray_azimuth)*sin(ray_altitude),
         cos(ray_altitude),

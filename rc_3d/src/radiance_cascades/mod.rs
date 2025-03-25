@@ -280,7 +280,7 @@ impl RadianceCascades {
                     0,
                     0,
                     self.constants.c0_resolution.x as _,
-                    (self.constants.c0_resolution.y / 2.0_f32.powi(n)) as _,
+                    self.constants.c0_resolution.y as _,
                 );
                 self.cascades.bind_cascade_as_output(gl, n as _);
                 gl.clear_color(0.0, 0.0, 0.0, 0.0);
@@ -360,8 +360,7 @@ impl RadianceCascades {
         self.calculate_cascades(gl, screen_resolution, scene, voxelizer);
 
         let cascade_width = self.constants.c0_resolution.x as i32;
-        let cascde_height =
-            (self.constants.c0_resolution.y / 2.0_f32.powi(self.debug_cascade_index as i32)) as i32;
+        let cascade_height = self.constants.c0_resolution.y as i32;
         let screen_width = screen_resolution.x as i32;
         let screen_height = screen_resolution.y as i32;
         unsafe {
@@ -379,7 +378,7 @@ impl RadianceCascades {
                 0,
                 0,
                 cascade_width,
-                cascde_height,
+                cascade_height,
                 0,
                 0,
                 screen_width,

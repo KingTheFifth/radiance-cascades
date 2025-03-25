@@ -367,7 +367,7 @@ impl MicroGLUT for App {
             gl,
             5.0,
             screen_resolution,
-            2.0,
+            4.0,
             rc_binding,
             scene_matrices_binding,
             hi_z_constants_binding,
@@ -517,29 +517,11 @@ impl MicroGLUT for App {
                     .with_albedo(Vec4::new(0.05, 0.1, 1., 1.))
                     .with_scale(Vec3::new(10., 0.25, 10.))
                     .with_translation(Vec3::new(0., -0.25, 0.)), //.with_emissive(Vec4::new(0.0, 0.0, 0.3, 1.0)),
-                //cube.clone()
-                //    .with_albedo(Vec4::new(1.0, 0.0, 0.0, 1.0))
-                //    .with_emissive(Vec4::new(1.0, 0.0, 0.0, 1.0))
-                //    .with_translation(Vec3::new(2.0, 1.1, 0.0)),
                 suzanne
                     .clone()
                     .with_albedo(Vec4::ONE)
                     .with_rotation(Quat::from_rotation_y(-PI * 0.25))
-                    .with_translation(Vec3::new(6.0, 0.0, -2.0)),
-                //sphere
-                //    .clone()
-                //    .with_albedo(Vec4::new(1.0, 1.0, 1.0, 0.2))
-                //    .with_uniform_scale(radiance_cascades.c0_interval_length())
-                //    .with_translation(Vec3::new(0.0, -radiance_cascades.c0_interval_length(), 2.0)),
-                //sphere
-                //    .clone()
-                //    .with_albedo(Vec4::new(1.0, 1.0, 1.0, 0.2))
-                //    .with_uniform_scale(2.0 * radiance_cascades.c0_interval_length())
-                //    .with_translation(Vec3::new(
-                //        0.0,
-                //        -2.0 * radiance_cascades.c0_interval_length(),
-                //        2.0,
-                //    )),
+                    .with_translation(Vec3::new(6.0, -0.2, -2.0)),
             ];
 
             App {
