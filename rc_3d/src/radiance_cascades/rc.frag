@@ -325,8 +325,8 @@ void main() {
     const float interval_length = c0_interval_length;
     const float interval_start = c0_interval_length * cascade_index;
     #else
-    const float interval_length = c0_interval_length * pow(4.0, cascade_index);
-    const float interval_start = c0_interval_length * ((1.0 - pow(4.0, cascade_index)) / (1.0 - 4.0));
+    const float interval_length = c0_interval_length * pow(2.0, cascade_index);
+    const float interval_start = c0_interval_length * ((1.0 - pow(2.0, cascade_index)) / (1.0 - 2.0));
     #endif
 
     const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
