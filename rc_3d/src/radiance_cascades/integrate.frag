@@ -57,7 +57,7 @@ void main() {
     vec2 scale_bias = vec2(azimuthal_dirs_inv, altitudinal_dirs_inv);
 
     for (float alt = 0.0; alt < 4.0; alt += 1.0) {
-        const float altitude = (alt + 0.5) * (2.0 * 3.14159265 * altitudinal_dirs_inv);
+        const float altitude = (alt + 0.5) * (3.14159265 * altitudinal_dirs_inv);
         const float cos_altitude = cos(altitude); 
         const float sin_altitude = sin(altitude); 
 

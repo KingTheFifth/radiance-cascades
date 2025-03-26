@@ -346,7 +346,7 @@ void main() {
     }
 
     const float ray_azimuth = (dir_block_index.x + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays));
-    const float ray_altitude = (dir_block_index.y + 0.5) * (2.0 * 3.14169265 / (num_altitudinal_rays));
+    const float ray_altitude = (dir_block_index.y + 0.5) * (3.14169265 / (num_altitudinal_rays));
     //const float ray_altitude = altitudes[int(dir_block_index.y)];
     const vec3 ray_dir_ws = normalize(vec3(
         cos(ray_azimuth)*sin(ray_altitude),
