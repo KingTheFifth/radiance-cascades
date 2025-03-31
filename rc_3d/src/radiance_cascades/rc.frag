@@ -60,7 +60,7 @@ const float DIR_EPS_X = 0.001;
 const float DIR_EPS_Y = 0.001;
 const float DIR_EPS_Z = 0.001;
 const float HI_Z_STEP_EPS = 0.01;
-const bool REMAP_DEPTH = false;
+const bool REMAP_DEPTH = true;
 
 const float altitudes[4] = {acos(-0.75), acos(-0.25), acos(0.25), acos(0.75)};
 //const float altitudes[4] = {acos(0.75), acos(0.25), acos(-0.25), acos(-0.75)};
@@ -272,7 +272,7 @@ vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
     return MISS_COLOR;
 }
 
-vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within_block) {
+vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_block) {
     if (radiance.a == 0.0 || cascade_index >= num_cascades - 1.0) {
         return vec4(radiance.rgb, 1.0 - radiance.a);
     }
@@ -287,8 +287,39 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
     const vec2 upper_cascade_probe_count = floor(screen_res / (c0_probe_spacing * pow(2.0, cascade_index + 1.0)));
     const vec2 upper_cascade_res = upper_cascade_num_dirs * upper_cascade_probe_count;
     const vec2 upper_cascade_res_inv = 1.0 / upper_cascade_res;
-    // Calculate bottom-left pixel of the direction block of the higher cascade to merge with
-    //vec2 prev_dir_block_index = vec2(dir_index, )
+    const vec2 upper_probe_count_inv = 1.0 / upper_cascade_probe_count;
+
+    vec2 upper_coord_within_block = 0.5 * coord_within_block;
+    vec2 upper_probe_base = floor(upper_coord_within_block);
+    vec2 upper_probe_frac = fract(upper_coord_within_block);
+    vec4 bilinear_weights = vec4(
+        (1.0 - upper_probe_frac.x) * (1.0 - upper_probe_frac.y),
+        upper_probe_frac.x * (1.0 - upper_probe_frac.y),
+        (1.0 - upper_probe_frac.x) * upper_probe_frac.y,
+        upper_probe_frac.x * upper_probe_frac.y
+    );
+
+    vec2 upper_probe_offsets[4] = {vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(1.0, 1.0)};
+    //vec4 upper_probe_depths = vec4(
+    //    screen_depth_to_view_depth(textureLod(hi_z_tex, (upper_probe_base + upper_probe_offsets[0]) * upper_probe_count_inv, 0).r),
+    //    screen_depth_to_view_depth(textureLod(hi_z_tex, (upper_probe_base + upper_probe_offsets[1]) * upper_probe_count_inv, 0).r),
+    //    screen_depth_to_view_depth(textureLod(hi_z_tex, (upper_probe_base + upper_probe_offsets[2]) * upper_probe_count_inv, 0).r),
+    //    screen_depth_to_view_depth(textureLod(hi_z_tex, (upper_probe_base + upper_probe_offsets[3]) * upper_probe_count_inv, 0).r)
+    //);
+
+    //float min_depth = min(min(upper_probe_depths.x, upper_probe_depths.y), min(upper_probe_depths.z, upper_probe_depths.w));
+    //float max_depth = max(max(upper_probe_depths.x, upper_probe_depths.y), max(upper_probe_depths.z, upper_probe_depths.w));
+    //float depth_diff = max_depth - min_depth;
+    //float avg_depth = dot(upper_probe_depths, vec4(0.25));
+    //bool depth_edge = (depth_diff / avg_depth) > 0.1;
+
+    vec4 weights = bilinear_weights;
+    //if (depth_edge) {
+    //    vec4 dd = abs(upper_probe_depths - vec4(screen_depth_to_view_depth(probe_pos_ss.z)));
+    //    weights *= vec4(1.0) / (dd + 0.0001);
+    //}
+    weights /= dot(weights, vec4(1.0));
+
 
     // Merge this ray direction with the two closest directions in the upper cascade
     vec4 upper_radiance = vec4(0.0);
@@ -297,16 +328,20 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec2 dir_block_size, vec2 coord_within
             vec2 branched_dir_index = dir_index * vec2(2.0, 2.0) + vec2(azi, alt);
             vec2 interpolation_point = branched_dir_index * upper_cascade_probe_count; // Bottom left probe texel
 
-            // Get the texel of the closest probe in the higher cascade and add an offset to interpolate
-            // from the 4 closest probes in the higher cascade
-            // TODO: bilateral interpolation by depth
-            interpolation_point += clamp(0.5 * coord_within_block + 0.25, vec2(0.5), upper_cascade_probe_count- 0.5);
-            upper_radiance += texture(prev_cascade, interpolation_point * upper_cascade_res_inv);
+            vec4 dir_radiance = vec4(0.0);
+            for (float probe_id = 0.0; probe_id < 4.0; probe_id++) {
+                if (weights[int(probe_id)] <= 0.0) {continue;}
 
+                vec2 p = clamp(upper_probe_base + upper_probe_offsets[int(probe_id)], vec2(0.5), upper_cascade_probe_count - 0.5);
+                vec4 s = texture(prev_cascade, (interpolation_point + p) * upper_cascade_res_inv);  //TODO: Should this be a texel fetch?
+
+                dir_radiance += s * weights[int(probe_id)];
+            }
+
+            upper_radiance += dir_radiance;
         }
     }
-    // TODO: Should the upper radiance (and occlusion?) be divided by the number of upper rays to merge with?
-    return radiance + upper_radiance * 0.25;//vec4(vec3(0.5), 1.0);
+    return radiance + upper_radiance * 0.25;
 }
 
 void main() {
@@ -370,7 +405,7 @@ void main() {
     #endif
 
     vec4 unmerged_radiance = radiance_min;
-    vec4 merged_radiance = merge(radiance_min, dir_block_index, probe_count, coord_within_dir_block);
+    vec4 merged_radiance = merge(radiance_min, dir_block_index, min_probe_pos_ss, coord_within_dir_block);
     color = merge_cascades ? merged_radiance : unmerged_radiance;
 
     //color = vec4(dir_block_index / vec2(num_azimuthal_rays, num_altitudinal_rays), 0.0, 1.0);
