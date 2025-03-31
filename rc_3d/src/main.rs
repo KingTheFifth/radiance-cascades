@@ -505,7 +505,7 @@ impl MicroGLUT for App {
 
             let objects = vec![
                 cube.clone()
-                    .with_emissive(Vec4::new(0.7, 0.7, 0.7, 1.0))
+                    .with_emissive(Vec4::new(1.0, 1.0, 1.0, 1.0))
                     .with_albedo(Vec4::W)
                     .with_translation(Vec3::new(0., 1.1, 2.)),
                 //sphere

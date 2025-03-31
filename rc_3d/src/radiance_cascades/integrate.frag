@@ -56,6 +56,7 @@ void main() {
     float azimuthal_dirs_inv = 1.0 / azimuthal_dirs;
     vec2 scale_bias = vec2(azimuthal_dirs_inv, altitudinal_dirs_inv);
 
+    float total_weight = 0.0;
     for (float alt = 0.0; alt < altitudinal_dirs; alt += 1.0) {
         const float altitude = (alt + 0.5) * (3.14159265 * altitudinal_dirs_inv);
         const float cos_altitude = cos(altitude); 
@@ -72,12 +73,14 @@ void main() {
                 sin(azimuth) * sin_altitude
             ));
 
-            radiance += cone_radiance * dot(cone_direction, normal);
+            float weight = max(0.0, dot(cone_direction, normal));
+            radiance += cone_radiance * weight;
+            total_weight += weight;
         }
     }
+    radiance = (total_weight > 0.0) ? radiance / total_weight : vec3(0.0);
 
     const vec4 albedo = texture(scene_albedo, tex_coord);
     const vec3 emissive = texture(scene_emissive, tex_coord).rgb;
     color = vec4(srgb_to_linear(albedo.rgb * (radiance + ambient) + emissive), albedo.a);
-    //color = vec4(srgb_to_linear(texture(merged_cascade_0, tex_coord).rgb), 1.0);
 }
