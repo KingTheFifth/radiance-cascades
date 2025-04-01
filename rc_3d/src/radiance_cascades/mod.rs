@@ -10,6 +10,7 @@ use microglut::{
     },
     imgui, LoadShaders,
 };
+use strum::{Display, VariantArray};
 
 use crate::{quad_renderer::QuadRenderer, scene_fbo::SceneFBO, voxelizer::Voxelizer};
 
@@ -50,9 +51,16 @@ struct RadianceCascadesConstants {
     _padding: [f32; 2],
 }
 
+#[derive(Display, VariantArray, PartialEq, Clone, Copy)]
+enum DebugModes {
+    Cascades,
+    Upscale,
+}
+
 pub struct RadianceCascades {
     cascade_program: NativeProgram,
     integration_program: NativeProgram,
+    upscale_program: NativeProgram,
     cascades: CascadeFBO,
     quad_renderer: QuadRenderer,
 
@@ -64,6 +72,7 @@ pub struct RadianceCascades {
     // Debug info
     merge_cascades: bool,
     debug_cascade_index: usize,
+    debug_mode: DebugModes,
 }
 
 impl RadianceCascadesConstants {
@@ -110,6 +119,8 @@ impl RadianceCascades {
             LoadShaders::new(include_str!("rc.vert"), include_str!("rc.frag")).compile(gl);
         let integration_program =
             LoadShaders::new(include_str!("rc.vert"), include_str!("integrate.frag")).compile(gl);
+        let upscale_program =
+            LoadShaders::new(include_str!("rc.vert"), include_str!("upscale.frag")).compile(gl);
 
         let quad_renderer = QuadRenderer::new(gl);
 
@@ -126,7 +137,7 @@ impl RadianceCascades {
         constants.upload_to_buffer(gl, constants_ssbo);
 
         unsafe {
-            let hi_z_constants_ssbo_loc = gl
+            let mut hi_z_constants_ssbo_loc = gl
                 .get_shader_storage_block_index(cascade_program, "HiZConstants")
                 .unwrap();
             gl.shader_storage_block_binding(
@@ -169,11 +180,21 @@ impl RadianceCascades {
                 scene_matrices_ssbo_loc,
                 scene_matrices_binding,
             );
+
+            hi_z_constants_ssbo_loc = gl
+                .get_shader_storage_block_index(upscale_program, "HiZConstants")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                upscale_program,
+                hi_z_constants_ssbo_loc,
+                hi_z_constants_binding,
+            );
         }
 
         Self {
             cascade_program,
             integration_program,
+            upscale_program,
             cascades,
             quad_renderer,
             constants,
@@ -182,6 +203,7 @@ impl RadianceCascades {
             merge_cascades: true,
             debug_cascade_index: 0,
             ambient_level: 0.1,
+            debug_mode: DebugModes::Cascades,
         }
     }
 
@@ -357,35 +379,73 @@ impl RadianceCascades {
         scene: &SceneFBO,
         voxelizer: &Voxelizer,
     ) {
-        self.calculate_cascades(gl, screen_resolution, scene, voxelizer);
-
-        let cascade_width = self.constants.c0_resolution.x as i32;
-        let cascade_height = self.constants.c0_resolution.y as i32;
         let screen_width = screen_resolution.x as i32;
         let screen_height = screen_resolution.y as i32;
-        unsafe {
-            gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.cascades.fb));
-            gl.read_buffer(COLOR_ATTACHMENT0);
-            gl.framebuffer_texture(
-                READ_FRAMEBUFFER,
-                COLOR_ATTACHMENT0,
-                Some(self.cascades.cascades[self.debug_cascade_index]),
-                0,
-            );
-            gl.viewport(0, 0, screen_width, screen_height);
-            gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
-            gl.blit_framebuffer(
-                0,
-                0,
-                cascade_width,
-                cascade_height,
-                0,
-                0,
-                screen_width,
-                screen_height,
-                COLOR_BUFFER_BIT,
-                LINEAR as _,
-            );
+        match self.debug_mode {
+            DebugModes::Cascades => {
+                self.calculate_cascades(gl, screen_resolution, scene, voxelizer);
+
+                let cascade_width = self.constants.c0_resolution.x as i32;
+                let cascade_height = self.constants.c0_resolution.y as i32;
+                unsafe {
+                    gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.cascades.fb));
+                    gl.read_buffer(COLOR_ATTACHMENT0);
+                    gl.framebuffer_texture(
+                        READ_FRAMEBUFFER,
+                        COLOR_ATTACHMENT0,
+                        Some(self.cascades.cascades[self.debug_cascade_index]),
+                        0,
+                    );
+                    gl.viewport(0, 0, screen_width, screen_height);
+                    gl.bind_framebuffer(DRAW_FRAMEBUFFER, None);
+                    gl.blit_framebuffer(
+                        0,
+                        0,
+                        cascade_width,
+                        cascade_height,
+                        0,
+                        0,
+                        screen_width,
+                        screen_height,
+                        COLOR_BUFFER_BIT,
+                        LINEAR as _,
+                    );
+                }
+            }
+            DebugModes::Upscale => unsafe {
+                gl.bind_framebuffer(FRAMEBUFFER, None);
+                gl.viewport(0, 0, screen_width, screen_height);
+                gl.clear(COLOR_BUFFER_BIT);
+                gl.use_program(Some(self.upscale_program));
+
+                gl.uniform_1_i32(
+                    gl.get_uniform_location(self.upscale_program, "full_res_tex")
+                        .as_ref(),
+                    0,
+                );
+                gl.uniform_1_i32(
+                    gl.get_uniform_location(self.upscale_program, "depth_tex")
+                        .as_ref(),
+                    1,
+                );
+                gl.uniform_1_i32(
+                    gl.get_uniform_location(self.upscale_program, "normal_tex")
+                        .as_ref(),
+                    2,
+                );
+
+                gl.active_texture(TEXTURE0);
+                gl.bind_texture(TEXTURE_2D, Some(scene.albedo));
+
+                gl.active_texture(TEXTURE1);
+                gl.bind_texture(TEXTURE_2D, Some(scene.depth_texture));
+
+                gl.active_texture(TEXTURE2);
+                gl.bind_texture(TEXTURE_2D, Some(scene.normal));
+
+                self.quad_renderer
+                    .draw_screen_quad(gl, self.upscale_program);
+            },
         }
     }
 
@@ -403,6 +463,23 @@ impl RadianceCascades {
     pub fn ui(&mut self, gl: &Context, ui: &imgui::Ui) {
         let mut constants_changed = false;
         if ui.tree_node("Radiance cascades").is_some() {
+            if let Some(cb) = ui.begin_combo("Mode", self.debug_mode.to_string()) {
+                for cur in DebugModes::VARIANTS {
+                    if &self.debug_mode == cur {
+                        ui.set_item_default_focus();
+                    }
+
+                    let clicked = ui
+                        .selectable_config(cur.to_string())
+                        .selected(&self.debug_mode == cur)
+                        .build();
+                    if clicked {
+                        self.debug_mode = *cur;
+                    }
+                }
+                cb.end();
+            }
+
             ui.input_scalar("Cascade index", &mut self.debug_cascade_index)
                 .build();
 
