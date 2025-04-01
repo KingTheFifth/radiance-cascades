@@ -164,6 +164,14 @@ impl RadianceCascades {
                 constants_ssbo_binding,
             );
 
+            hi_z_constants_ssbo_loc = gl
+                .get_shader_storage_block_index(integration_program, "HiZConstants")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                integration_program,
+                hi_z_constants_ssbo_loc,
+                hi_z_constants_binding,
+            );
             constants_ssbo_loc = gl
                 .get_shader_storage_block_index(integration_program, "RCConstants")
                 .unwrap();
@@ -345,6 +353,11 @@ impl RadianceCascades {
                     .as_ref(),
                 3,
             );
+            gl.uniform_1_i32(
+                gl.get_uniform_location(self.integration_program, "depth_tex")
+                    .as_ref(),
+                4,
+            );
             gl.uniform_1_f32(
                 gl.get_uniform_location(self.integration_program, "cascade_index")
                     .as_ref(),
@@ -364,6 +377,8 @@ impl RadianceCascades {
             gl.bind_texture(TEXTURE_2D, Some(scene.albedo));
             gl.active_texture(TEXTURE3);
             gl.bind_texture(TEXTURE_2D, Some(scene.emissive));
+            gl.active_texture(TEXTURE4);
+            gl.bind_texture(TEXTURE4, Some(scene.hi_z_texture));
 
             gl.viewport(0, 0, screen_resolution.x as _, screen_resolution.y as _);
             gl.clear(COLOR_BUFFER_BIT);
@@ -463,7 +478,7 @@ impl RadianceCascades {
     pub fn ui(&mut self, gl: &Context, ui: &imgui::Ui) {
         let mut constants_changed = false;
         if ui.tree_node("Radiance cascades").is_some() {
-            if let Some(cb) = ui.begin_combo("Mode", self.debug_mode.to_string()) {
+            if let Some(cb) = ui.begin_combo("Mode##xx", self.debug_mode.to_string()) {
                 for cur in DebugModes::VARIANTS {
                     if &self.debug_mode == cur {
                         ui.set_item_default_focus();

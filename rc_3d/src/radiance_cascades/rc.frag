@@ -87,6 +87,10 @@ float screen_depth_to_view_depth(float depth) {
     return - z_near * z_far / (z_far + depth * (z_near - z_far));
 }
 
+float linearize_depth(float depth) {
+    return -1.0 * screen_depth_to_view_depth(depth) / (z_far - z_near);
+}
+
 // pixel_coord.xy is the fragment coordinate (gl_FragCoord.xy),
 // pixel_coord.z is the depth saved in the depth buffer for the pixel
 vec4 screen_pos_to_view_pos(vec3 pixel_coord) {
@@ -284,13 +288,14 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_b
     );
 
     // (Number of probes decrease by 2 each higher cascade)
-    const vec2 upper_cascade_probe_count = floor(screen_res / (c0_probe_spacing * pow(2.0, cascade_index + 1.0)));
+    const vec2 upper_probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index + 1.0));
+    const vec2 upper_cascade_probe_count = floor(screen_res / upper_probe_spacing);
     const vec2 upper_cascade_res = upper_cascade_num_dirs * upper_cascade_probe_count;
     const vec2 upper_cascade_res_inv = 1.0 / upper_cascade_res;
     const vec2 upper_probe_count_inv = 1.0 / upper_cascade_probe_count;
 
     vec2 upper_coord_within_block = 0.5 * coord_within_block;
-    vec2 upper_probe_base = floor(upper_coord_within_block);
+    ivec2 upper_probe_base = ivec2(floor(upper_coord_within_block));
     vec2 upper_probe_frac = fract(upper_coord_within_block);
     vec4 bilinear_weights = vec4(
         (1.0 - upper_probe_frac.x) * (1.0 - upper_probe_frac.y),
@@ -299,27 +304,40 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_b
         upper_probe_frac.x * upper_probe_frac.y
     );
 
-    vec2 upper_probe_offsets[4] = {vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(1.0, 1.0)};
-    //vec4 upper_probe_depths = vec4(
-    //    screen_depth_to_view_depth(textureLod(hi_z_tex, (upper_probe_base + upper_probe_offsets[0]) * upper_probe_count_inv, 0).r),
-    //    screen_depth_to_view_depth(textureLod(hi_z_tex, (upper_probe_base + upper_probe_offsets[1]) * upper_probe_count_inv, 0).r),
-    //    screen_depth_to_view_depth(textureLod(hi_z_tex, (upper_probe_base + upper_probe_offsets[2]) * upper_probe_count_inv, 0).r),
-    //    screen_depth_to_view_depth(textureLod(hi_z_tex, (upper_probe_base + upper_probe_offsets[3]) * upper_probe_count_inv, 0).r)
-    //);
+    ivec2 upper_probe_offsets[4] = {ivec2(0.0, 0.0), ivec2(1.0, 0.0), ivec2(0.0, 1.0), ivec2(1.0, 1.0)};
+    ivec2 upper_probe_coords[4] = {
+        upper_probe_base + upper_probe_offsets[0],
+        upper_probe_base + upper_probe_offsets[1],
+        upper_probe_base + upper_probe_offsets[2],
+        upper_probe_base + upper_probe_offsets[3]
+    };
 
-    //float min_depth = min(min(upper_probe_depths.x, upper_probe_depths.y), min(upper_probe_depths.z, upper_probe_depths.w));
-    //float max_depth = max(max(upper_probe_depths.x, upper_probe_depths.y), max(upper_probe_depths.z, upper_probe_depths.w));
-    //float depth_diff = max_depth - min_depth;
-    //float avg_depth = dot(upper_probe_depths, vec4(0.25));
-    //bool depth_edge = (depth_diff / avg_depth) > 0.1;
+    ivec2 upper_probe_screen_coords[4] = {
+        upper_probe_coords[0] * int(upper_probe_spacing),
+        upper_probe_coords[1] * int(upper_probe_spacing),
+        upper_probe_coords[2] * int(upper_probe_spacing),
+        upper_probe_coords[3] * int(upper_probe_spacing)
+    };
+
+    float linear_probe_depth = linearize_depth(probe_pos_ss.z);
+    vec4 depths = vec4(
+        linearize_depth(texelFetch(hi_z_tex, upper_probe_screen_coords[0], 0).r),
+        linearize_depth(texelFetch(hi_z_tex, upper_probe_screen_coords[1], 0).r),
+        linearize_depth(texelFetch(hi_z_tex, upper_probe_screen_coords[2], 0).r),
+        linearize_depth(texelFetch(hi_z_tex, upper_probe_screen_coords[3], 0).r)
+    );
+    float min_depth = min(min(depths.x, depths.y), min(depths.z, depths.w));
+    float max_depth = max(max(depths.x, depths.y), max(depths.z, depths.w));
+    float depth_diff = max_depth - min_depth;
+    float avg_depth = dot(depths, vec4(0.25));
+    bool depth_edge = (depth_diff / avg_depth) > 0.1;
 
     vec4 weights = bilinear_weights;
-    //if (depth_edge) {
-    //    vec4 dd = abs(upper_probe_depths - vec4(screen_depth_to_view_depth(probe_pos_ss.z)));
-    //    weights *= vec4(1.0) / (dd + 0.0001);
-    //}
+    if (depth_edge) {
+        vec4 dd = abs(depths - vec4(linear_probe_depth));
+        weights *= vec4(1.0) / (dd + vec4(0.0001));
+    }
     weights /= dot(weights, vec4(1.0));
-
 
     // Merge this ray direction with the two closest directions in the upper cascade
     vec4 upper_radiance = vec4(0.0);
@@ -329,13 +347,12 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_b
             vec2 interpolation_point = branched_dir_index * upper_cascade_probe_count; // Bottom left probe texel
 
             vec4 dir_radiance = vec4(0.0);
-            for (float probe_id = 0.0; probe_id < 4.0; probe_id++) {
-                if (weights[int(probe_id)] <= 0.0) {continue;}
+            for (int probe = 0; probe < 4; probe++) {
+                vec2 p = clamp(upper_probe_coords[probe], vec2(0.5), upper_cascade_probe_count - 0.5);
+                //vec4 s = texture(prev_cascade, (interpolation_point + p) * upper_cascade_res_inv);  //TODO: Should this be a texel fetch?
+                vec4 s = texelFetch(prev_cascade, ivec2(interpolation_point + p), 0);
 
-                vec2 p = clamp(upper_probe_base + upper_probe_offsets[int(probe_id)], vec2(0.5), upper_cascade_probe_count - 0.5);
-                vec4 s = texture(prev_cascade, (interpolation_point + p) * upper_cascade_res_inv);  //TODO: Should this be a texel fetch?
-
-                dir_radiance += s * weights[int(probe_id)];
+                dir_radiance += s * weights[probe];
             }
 
             upper_radiance += dir_radiance;
@@ -367,9 +384,10 @@ void main() {
     const float interval_start = c0_interval_length * ((1.0 - pow(2.0, cascade_index)) / (1.0 - 2.0));
     #endif
 
-    const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
-    const vec3 normal_vs = octahedral_decode(texture(scene_normal, probe_pixel * screen_res_inv).xy);
-    const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
+    const vec2 probe_pixel = (coord_within_dir_block + 0.0) * probe_spacing; // Probes in center of pixel
+    const vec3 normal_vs = octahedral_decode(texture(scene_normal, (probe_pixel + 0.5 * probe_spacing) * screen_res_inv).xy);
+    //const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
+    const vec3 min_probe_pos_ss = vec3(probe_pixel, texelFetch(hi_z_tex, ivec2(probe_pixel), 0).r);
     const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * normal_offset;
     const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(min_probe_pos_vs, 1.0)).xyz;
     //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);

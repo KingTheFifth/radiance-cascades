@@ -45,10 +45,10 @@ vec3 octahedral_decode(vec2 v) {
 #define USE_TEXEL_FETCH
 
 void main() {
-    int scale = 2;
+    int scale = 4;
     float scale_inv = 1.0 / float(scale);
     vec2 low_res_dimensions = textureSize(full_res_tex, 0) * scale_inv;
-    vec2 low_res_coord = tex_coord * low_res_dimensions - 0.5;
+    vec2 low_res_coord = gl_FragCoord.xy * scale_inv;
     ivec2 low_res_coord_base = ivec2(floor(low_res_coord));
     vec2 low_res_coord_frac = fract(low_res_coord);
     vec4 bilinear_weights = vec4(
