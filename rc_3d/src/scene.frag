@@ -8,6 +8,18 @@ layout(location = 0) out vec4 g_albedo;
 layout(location = 1) out vec4 g_emissive;
 layout(location = 2) out vec4 g_normal;
 
+uniform vec3 diffuse;
+uniform int has_diffuse;
+uniform vec3 specular;
+uniform int has_specular;
+
+uniform sampler2D diffuse_tex;
+uniform int has_diffuse_tex;
+uniform sampler2D specular_tex;
+uniform int has_specular_tex;
+uniform sampler2D normal_tex;
+uniform int has_normal_tex;
+
 vec2 sign_not_zero(vec2 v) {
     return vec2(
         (v.x >= 0.0) ? 1.0 : -1.0,
@@ -25,7 +37,15 @@ vec2 octahedral_encode(vec3 v) {
 }
 
 void main() {
-    g_albedo = albedo;
+    if (has_diffuse_tex == 1) {
+        g_albedo = texture(diffuse_tex, vec2(tex_coord.x, 1.0 - tex_coord.y));
+    }
+    else if (has_diffuse == 1) {
+        g_albedo = vec4(diffuse, 1.0);
+    }
+    else {
+        g_albedo = albedo;
+    }
     g_emissive = emissive;
     //g_emissive.a = albedo.a;
     g_normal = vec4(octahedral_encode(normalize(normal)), 0.0, 1.0);

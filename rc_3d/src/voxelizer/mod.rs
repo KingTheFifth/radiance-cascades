@@ -279,6 +279,7 @@ impl Voxelizer {
                     "position",
                     Some("normal"),
                     Some("tex_coord"),
+                    None,
                 );
             }
 
