@@ -1,6 +1,6 @@
 use glow::{
-    Context, HasContext as _, NativeTexture, LINEAR, LINEAR_MIPMAP_LINEAR, RGBA, TEXTURE_2D,
-    TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, UNSIGNED_BYTE,
+    Context, HasContext as _, NativeTexture, LINEAR, LINEAR_MIPMAP_LINEAR, RED, RG, RGB, RGBA,
+    TEXTURE_2D, TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, UNSIGNED_BYTE,
 };
 
 use crate::print_error;
@@ -27,13 +27,15 @@ impl Texture {
             print_error(gl, "texture param min filter").unwrap();
             gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_MAG_FILTER, LINEAR as i32);
             print_error(gl, "texture param mag filter").unwrap();
-            // TODO:
-            // let format = match image.depth {
-            //     8 => RED,
-            //     24 => RGB,
-            //     32 => RGBA,
-            //     d => panic!("unsupported bit depth: {}", d),
-            // };
+
+            let format = match image.depth {
+                1 => RED,
+                2 => RG,
+                3 => RGB,
+                4 => RGBA,
+                d => panic!("unsupported bit depth: {}", d),
+            };
+
             gl.tex_image_2d(
                 TEXTURE_2D,
                 0,
@@ -41,7 +43,7 @@ impl Texture {
                 image.width as _,
                 image.height as _,
                 0,
-                RGBA as _,
+                format as _,
                 UNSIGNED_BYTE,
                 Some(&image.data),
             );
