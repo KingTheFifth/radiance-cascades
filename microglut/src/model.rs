@@ -1,5 +1,5 @@
 #![expect(clippy::missing_safety_doc)]
-use std::{collections::HashMap, io::BufReader, path::Path};
+use std::{collections::HashMap, io::BufReader, path::Path, str::FromStr};
 
 use glam::{Vec2, Vec3};
 use glow::{
@@ -23,6 +23,8 @@ pub struct Mesh {
     vertex_array: VertexArray,
     vertex_buffer: Buffer,
     normal_buffer: Option<Buffer>,
+    tangent_buffer: Option<Buffer>,
+    bitangent_buffer: Option<Buffer>,
     texture_coordinate_buffer: Option<Buffer>,
     index_buffer: Buffer,
     num_indices: u32,
@@ -30,7 +32,12 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    fn new(gl: &Context, mesh_data: tobj::Mesh, material: Option<usize>) -> Self {
+    fn new(
+        gl: &Context,
+        mesh_data: tobj::Mesh,
+        material: Option<usize>,
+        generate_tangents: bool,
+    ) -> Self {
         let (vertex_array, vertex_buffer, index_buffer) = unsafe {
             (
                 gl.create_vertex_array().unwrap(),
@@ -62,6 +69,16 @@ impl Mesh {
             } else {
                 None
             },
+            tangent_buffer: if generate_tangents && has_normals && has_texture_coordinates {
+                unsafe { Some(gl.create_buffer().unwrap()) }
+            } else {
+                None
+            },
+            bitangent_buffer: if generate_tangents && has_normals && has_texture_coordinates {
+                unsafe { Some(gl.create_buffer().unwrap()) }
+            } else {
+                None
+            },
             texture_coordinate_buffer: if has_texture_coordinates {
                 unsafe { Some(gl.create_buffer().unwrap()) }
             } else {
@@ -78,6 +95,20 @@ impl Mesh {
             }
             if let Some(texture_coordinates) = &texture_coordinates {
                 mesh.texture_data_f32(gl, texture_coordinates);
+            }
+
+            if generate_tangents {
+                if let Some(normals) = &normals {
+                    if let Some(texture_coordinates) = &texture_coordinates {
+                        mesh.generate_tangents(
+                            gl,
+                            &mesh_data.indices,
+                            &mesh_data.positions,
+                            normals,
+                            texture_coordinates,
+                        );
+                    }
+                }
             }
         }
 
@@ -134,6 +165,89 @@ impl Mesh {
         }
     }
 
+    pub unsafe fn generate_tangents(
+        &self,
+        gl: &Context,
+        indices: &[u32],
+        positions: &[f32],
+        normals: &[f32],
+        texture_coordinates: &[f32],
+    ) {
+        let vertices: Vec<(Vec3, Vec3, Vec2)> = indices
+            .iter()
+            .map(|i| {
+                let position = Vec3::new(
+                    positions[(i * 3) as usize],
+                    positions[(i * 3 + 1) as usize],
+                    positions[(i * 3 + 2) as usize],
+                );
+                let normal = Vec3::new(
+                    normals[(i * 3) as usize],
+                    normals[(i * 3 + 1) as usize],
+                    normals[(i * 3 + 2) as usize],
+                );
+                let tex_coord = Vec2::new(
+                    texture_coordinates[(i * 2) as usize],
+                    texture_coordinates[(i * 2 + 1) as usize],
+                );
+                (position, normal, tex_coord)
+            })
+            .collect();
+
+        let mut tangents: Vec<Vec3> = vec![];
+        let mut bitangents: Vec<Vec3> = vec![];
+
+        for face in indices.chunks_exact(3) {
+            let (p0, n0, t0) = vertices[face[0] as usize];
+            let (p1, n1, t1) = vertices[face[1] as usize];
+            let (p2, n2, t2) = vertices[face[2] as usize];
+
+            let v = p1 - p0;
+            let w = p2 - p0;
+
+            let mut sx = t1.x - t0.x;
+            let mut sy = t1.y - t0.y;
+            let mut tx = t2.x - t0.x;
+            let mut ty = t2.y - t0.y;
+            let dir_correction = if tx * sy - ty * sx < 0.0 { -1.0 } else { 1.0 };
+
+            if sx * ty == sy * tx {
+                sx = 0.0;
+                sy = 1.0;
+                tx = 1.0;
+                ty = 0.0;
+            }
+
+            let tangent = Vec3::new(
+                (w.x * sy - v.x * ty) * dir_correction,
+                (w.y * sy - v.y * ty) * dir_correction,
+                (w.z * sy - v.z * ty) * dir_correction,
+            );
+            let bitangent = Vec3::new(
+                (w.x * sx - v.x * tx) * dir_correction,
+                (w.y * sx - v.y * tx) * dir_correction,
+                (w.z * sx - v.z * tx) * dir_correction,
+            );
+
+            // Calculate local tangents and bitangents
+            tangents.push((tangent - n0 * n0.dot(tangent)).normalize());
+            tangents.push((tangent - n1 * n1.dot(tangent)).normalize());
+            tangents.push((tangent - n2 * n2.dot(tangent)).normalize());
+            bitangents.push((bitangent - n0 * n0.dot(bitangent)).normalize());
+            bitangents.push((bitangent - n1 * n1.dot(bitangent)).normalize());
+            bitangents.push((bitangent - n2 * n2.dot(bitangent)).normalize());
+
+            //TODO: handle case where local tangent/bitangent is infinite or NaN
+        }
+
+        gl.bind_vertex_array(Some(self.vertex_array));
+        gl.bind_buffer(ARRAY_BUFFER, self.tangent_buffer);
+        gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&tangents), STATIC_DRAW);
+
+        gl.bind_buffer(ARRAY_BUFFER, self.bitangent_buffer);
+        gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&bitangents), STATIC_DRAW);
+    }
+
     pub fn bind(
         &self,
         gl: &Context,
@@ -141,6 +255,8 @@ impl Mesh {
         vertex_binding: &str,
         normal_binding: Option<&str>,
         texture_binding: Option<&str>,
+        tangent_binding: Option<&str>,
+        bitangent_binding: Option<&str>,
     ) {
         unsafe {
             gl.bind_vertex_array(Some(self.vertex_array));
@@ -169,6 +285,21 @@ impl Mesh {
                     // TODO: warn once
                 }
             }
+
+            if let Some(tangent_binding) = tangent_binding {
+                if let Some(loc) = gl.get_attrib_location(program, tangent_binding) {
+                    gl.bind_buffer(ARRAY_BUFFER, Some(self.tangent_buffer.unwrap()));
+                    gl.vertex_attrib_pointer_f32(loc, 3, FLOAT, false, 0, 0);
+                    gl.enable_vertex_attrib_array(loc);
+                }
+            }
+            if let Some(bitangent_binding) = bitangent_binding {
+                if let Some(loc) = gl.get_attrib_location(program, bitangent_binding) {
+                    gl.bind_buffer(ARRAY_BUFFER, Some(self.bitangent_buffer.unwrap()));
+                    gl.vertex_attrib_pointer_f32(loc, 3, FLOAT, false, 0, 0);
+                    gl.enable_vertex_attrib_array(loc);
+                }
+            }
         }
     }
 
@@ -179,8 +310,18 @@ impl Mesh {
         vertex_binding: &str,
         normal_binding: Option<&str>,
         texture_binding: Option<&str>,
+        tangent_binding: Option<&str>,
+        bitangent_binding: Option<&str>,
     ) {
-        self.bind(gl, program, vertex_binding, normal_binding, texture_binding);
+        self.bind(
+            gl,
+            program,
+            vertex_binding,
+            normal_binding,
+            texture_binding,
+            tangent_binding,
+            bitangent_binding,
+        );
         unsafe { gl.draw_elements(TRIANGLES, self.num_indices as _, UNSIGNED_INT, 0) }
     }
 }
@@ -188,6 +329,7 @@ impl Mesh {
 #[derive(Debug, Clone, Copy)]
 struct Material {
     ambient: Option<Vec3>,
+    emissive: Option<Vec3>,
     diffuse: Option<Vec3>,
     specular: Option<Vec3>,
     shininess: Option<f32>,
@@ -204,6 +346,7 @@ struct Material {
 
 pub struct MaterialBindings {
     pub ambient: Option<String>,
+    pub emissive: Option<String>,
     pub diffuse: Option<String>,
     pub specular: Option<String>,
     pub shininess: Option<String>,
@@ -220,7 +363,15 @@ pub struct MaterialBindings {
 
 impl Material {
     fn new(gl: &Context, material: tobj::Material, texture_loader: Option<&TextureLoader>) -> Self {
-        // TODO: is the "main" texture always the name?
+        let emissive = material.unknown_param.get("Ke").map(|word| {
+            word.split_whitespace()
+                .take(3)
+                .map(FromStr::from_str)
+                .collect::<Result<Vec<f32>, _>>()
+                .map(|v| Vec3::from_slice(&v))
+                .unwrap()
+        });
+
         if let Some(tex_loader) = texture_loader {
             let ambient_texture = material
                 .ambient_texture
@@ -248,6 +399,7 @@ impl Material {
                 .map(|data| Texture::load(gl, &data, true));
             Material {
                 ambient: material.ambient.map(Vec3::from_array),
+                emissive,
                 diffuse: material.diffuse.map(Vec3::from_array),
                 specular: material.specular.map(Vec3::from_array),
                 shininess: material.shininess,
@@ -264,6 +416,7 @@ impl Material {
         } else {
             Material {
                 ambient: material.ambient.map(Vec3::from_array),
+                emissive,
                 diffuse: material.diffuse.map(Vec3::from_array),
                 specular: material.specular.map(Vec3::from_array),
                 shininess: material.shininess,
@@ -291,6 +444,17 @@ impl Material {
                     gl.get_uniform_location(program, &format!("has_{}", ambient_binding))
                         .as_ref(),
                     self.ambient.is_some() as i32,
+                );
+            }
+            if let Some(emissive_binding) = &bindings.emissive {
+                gl.uniform_3_f32_slice(
+                    gl.get_uniform_location(program, &emissive_binding).as_ref(),
+                    self.emissive.unwrap_or_default().as_ref(),
+                );
+                gl.uniform_1_i32(
+                    gl.get_uniform_location(program, &format!("has_{}", emissive_binding))
+                        .as_ref(),
+                    self.emissive.is_some() as i32,
                 );
             }
             if let Some(diffuse_binding) = &bindings.diffuse {
@@ -490,6 +654,8 @@ impl Model {
             } else {
                 None
             },
+            tangent_buffer: None,
+            bitangent_buffer: None,
             material: None,
         };
 
@@ -516,6 +682,7 @@ impl Model {
         data: &[u8],
         material_loader: Option<&MaterialLoader>,
         texture_loader: Option<&TextureLoader>,
+        generate_tangents: bool,
     ) -> Self {
         let model = tobj::load_obj_buf(
             &mut BufReader::new(data),
@@ -536,7 +703,7 @@ impl Model {
             .into_iter()
             .map(|mesh| {
                 let material_id = mesh.mesh.material_id;
-                Mesh::new(gl, mesh.mesh, material_id)
+                Mesh::new(gl, mesh.mesh, material_id, generate_tangents)
             })
             .collect();
         // TODO: can we have materials without textures?
@@ -557,6 +724,8 @@ impl Model {
         vertex_binding: &str,
         normal_binding: Option<&str>,
         texture_binding: Option<&str>,
+        tangent_binding: Option<&str>,
+        bitangent_binding: Option<&str>,
         material_bindings: Option<&MaterialBindings>,
     ) {
         for mesh in &self.meshes {
@@ -565,7 +734,15 @@ impl Model {
                     self.material[material].bind(gl, program, m);
                 }
             }
-            mesh.draw(gl, program, vertex_binding, normal_binding, texture_binding);
+            mesh.draw(
+                gl,
+                program,
+                vertex_binding,
+                normal_binding,
+                texture_binding,
+                tangent_binding,
+                bitangent_binding,
+            );
         }
     }
 
@@ -577,6 +754,8 @@ impl Model {
         vertex_binding: &str,
         normal_binding: Option<&str>,
         texture_binding: Option<&str>,
+        tangent_binding: Option<&str>,
+        bitangent_binding: Option<&str>,
         material_bindings: Option<&MaterialBindings>,
     ) {
         let Some(mesh) = self.meshes.get(mesh_idx) else {
@@ -587,6 +766,14 @@ impl Model {
                 self.material[material].bind(gl, program, m);
             }
         }
-        mesh.draw(gl, program, vertex_binding, normal_binding, texture_binding);
+        mesh.draw(
+            gl,
+            program,
+            vertex_binding,
+            normal_binding,
+            texture_binding,
+            tangent_binding,
+            bitangent_binding,
+        );
     }
 }
