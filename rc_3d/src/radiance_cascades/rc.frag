@@ -276,23 +276,9 @@ vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
     return MISS_COLOR;
 }
 
-vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_block) {
-    if (radiance.a == 0.0 || cascade_index >= num_cascades - 1.0) {
-        return vec4(radiance.rgb, 1.0 - radiance.a);
-    }
-
-    // (Number of azimuthal directions increase by 2 each higher cascade, altitudinal stay the same)
-    const vec2 upper_cascade_num_dirs = vec2(
-        4.0 * pow(2.0, cascade_index + 1.0),
-        4.0 * pow(2.0, cascade_index + 1.0)
-    );
-
-    // (Number of probes decrease by 2 each higher cascade)
+vec4 get_upper_depth_weights(vec3 probe_pos_ss, vec2 coord_within_block) {
     const vec2 upper_probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index + 1.0));
-    const vec2 upper_cascade_probe_count = floor(screen_res / upper_probe_spacing);
-    const vec2 upper_cascade_res = upper_cascade_num_dirs * upper_cascade_probe_count;
-    const vec2 upper_cascade_res_inv = 1.0 / upper_cascade_res;
-    const vec2 upper_probe_count_inv = 1.0 / upper_cascade_probe_count;
+    const vec2 upper_probe_count = floor(screen_res / upper_probe_spacing);
 
     vec2 upper_coord_within_block = 0.5 * coord_within_block;
     ivec2 upper_probe_base = ivec2(floor(upper_coord_within_block));
@@ -338,6 +324,46 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_b
         weights *= vec4(1.0) / (dd + vec4(0.0001));
     }
     weights /= dot(weights, vec4(1.0));
+
+    return weights;
+}
+
+vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_block) {
+    if (radiance.a == 0.0 || cascade_index >= num_cascades - 1.0) {
+        return vec4(radiance.rgb, 1.0 - radiance.a);
+    }
+
+    // (Number of azimuthal directions increase by 2 each higher cascade, altitudinal stay the same)
+    const vec2 upper_cascade_num_dirs = vec2(
+        4.0 * pow(2.0, cascade_index + 1.0),
+        4.0 * pow(2.0, cascade_index + 1.0)
+    );
+
+    // (Number of probes decrease by 2 each higher cascade)
+    const vec2 upper_probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index + 1.0));
+    const vec2 upper_cascade_probe_count = floor(screen_res / upper_probe_spacing);
+    const vec2 upper_cascade_res = upper_cascade_num_dirs * upper_cascade_probe_count;
+    const vec2 upper_cascade_res_inv = 1.0 / upper_cascade_res;
+
+    vec2 upper_coord_within_block = 0.5 * coord_within_block;
+    ivec2 upper_probe_base = ivec2(floor(upper_coord_within_block));
+
+    ivec2 upper_probe_offsets[4] = {ivec2(0.0, 0.0), ivec2(1.0, 0.0), ivec2(0.0, 1.0), ivec2(1.0, 1.0)};
+    ivec2 upper_probe_coords[4] = {
+        upper_probe_base + upper_probe_offsets[0],
+        upper_probe_base + upper_probe_offsets[1],
+        upper_probe_base + upper_probe_offsets[2],
+        upper_probe_base + upper_probe_offsets[3]
+    };
+
+    ivec2 upper_probe_screen_coords[4] = {
+        upper_probe_coords[0] * int(upper_probe_spacing),
+        upper_probe_coords[1] * int(upper_probe_spacing),
+        upper_probe_coords[2] * int(upper_probe_spacing),
+        upper_probe_coords[3] * int(upper_probe_spacing)
+    };
+
+    vec4 weights = get_upper_depth_weights(probe_pos_ss, coord_within_block);
 
     // Merge this ray direction with the two closest directions in the upper cascade
     vec4 upper_radiance = vec4(0.0);
@@ -388,8 +414,9 @@ void main() {
     const vec3 normal_ws = octahedral_decode(texture(scene_normal, (probe_pixel + 0.5 * probe_spacing) * screen_res_inv).xy);
     const vec3 normal_vs = normalize(mat3(world_to_view) * normal_ws);
     //const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
-    const vec3 min_probe_pos_ss = vec3(probe_pixel, texelFetch(hi_z_tex, ivec2(probe_pixel), 0).r);
+    vec3 min_probe_pos_ss = vec3(probe_pixel, texelFetch(hi_z_tex, ivec2(probe_pixel), 0).r);
     const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * normal_offset;
+    //min_probe_pos_ss = view_pos_to_screen_pos(min_probe_pos_vs).xyz;
     const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(min_probe_pos_vs, 1.0)).xyz;
     //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
