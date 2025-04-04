@@ -31,6 +31,30 @@ pub struct Mesh {
     material: Option<usize>, // index into Model.material, if any
 }
 
+fn is_invalid_tangent(v: Vec3) -> bool {
+    return !v.is_finite() || (v.cmpgt(Vec3::ONE * -0.5).all() && v.cmplt(Vec3::ONE * 0.5).all());
+}
+
+fn is_invalid_bitangent(v: Vec3) -> bool {
+    return is_invalid_tangent(v);
+}
+
+fn reconstruct_tangent(tangent: Vec3, bitangent: Vec3, normal: Vec3) -> Vec3 {
+    if is_invalid_tangent(tangent) && !is_invalid_bitangent(bitangent) {
+        normal.cross(bitangent).normalize()
+    } else {
+        tangent
+    }
+}
+
+fn reconstruct_bitangent(tangent: Vec3, bitangent: Vec3, normal: Vec3) -> Vec3 {
+    if is_invalid_bitangent(bitangent) && !is_invalid_tangent(tangent) {
+        tangent.cross(normal).normalize()
+    } else {
+        bitangent
+    }
+}
+
 impl Mesh {
     fn new(
         gl: &Context,
@@ -230,14 +254,19 @@ impl Mesh {
             );
 
             // Calculate local tangents and bitangents
-            tangents.push((tangent - n0 * n0.dot(tangent)).normalize());
-            tangents.push((tangent - n1 * n1.dot(tangent)).normalize());
-            tangents.push((tangent - n2 * n2.dot(tangent)).normalize());
-            bitangents.push((bitangent - n0 * n0.dot(bitangent)).normalize());
-            bitangents.push((bitangent - n1 * n1.dot(bitangent)).normalize());
-            bitangents.push((bitangent - n2 * n2.dot(bitangent)).normalize());
+            let local_tangent0 = (tangent - n0 * n0.dot(tangent)).normalize();
+            let local_tangent1 = (tangent - n1 * n1.dot(tangent)).normalize();
+            let local_tangent2 = (tangent - n2 * n2.dot(tangent)).normalize();
 
-            //TODO: handle case where local tangent/bitangent is infinite or NaN
+            let local_bitangent0 = (bitangent - n0 * n0.dot(bitangent)).normalize();
+            let local_bitangent1 = (bitangent - n1 * n1.dot(bitangent)).normalize();
+            let local_bitangent2 = (bitangent - n2 * n2.dot(bitangent)).normalize();
+            tangents.push(reconstruct_tangent(local_tangent0, local_bitangent0, n0));
+            tangents.push(reconstruct_tangent(local_tangent1, local_bitangent1, n1));
+            tangents.push(reconstruct_tangent(local_tangent2, local_bitangent2, n2));
+            bitangents.push(reconstruct_bitangent(local_tangent0, local_bitangent0, n0));
+            bitangents.push(reconstruct_bitangent(local_tangent1, local_bitangent1, n1));
+            bitangents.push(reconstruct_bitangent(local_tangent2, local_bitangent2, n2));
         }
 
         gl.bind_vertex_array(Some(self.vertex_array));
