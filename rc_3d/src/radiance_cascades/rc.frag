@@ -385,7 +385,8 @@ void main() {
     #endif
 
     const vec2 probe_pixel = (coord_within_dir_block + 0.0) * probe_spacing; // Probes in center of pixel
-    const vec3 normal_vs = octahedral_decode(texture(scene_normal, (probe_pixel + 0.5 * probe_spacing) * screen_res_inv).xy);
+    const vec3 normal_ws = octahedral_decode(texture(scene_normal, (probe_pixel + 0.5 * probe_spacing) * screen_res_inv).xy);
+    const vec3 normal_vs = normalize(mat3(world_to_view) * normal_ws);
     //const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
     const vec3 min_probe_pos_ss = vec3(probe_pixel, texelFetch(hi_z_tex, ivec2(probe_pixel), 0).r);
     const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * normal_offset;

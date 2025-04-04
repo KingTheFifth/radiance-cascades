@@ -9,7 +9,7 @@ use microglut::{
         TEXTURE_MAG_FILTER, TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TEXTURE_WRAP_T,
         TRIANGLES, UNSIGNED_BYTE, UNSIGNED_INT, WRITE_ONLY,
     },
-    imgui, LoadShaders,
+    imgui, LoadShaders, MaterialBindings,
 };
 use strum::{Display, VariantArray};
 
@@ -256,6 +256,23 @@ impl Voxelizer {
 
             gl.color_mask(false, false, false, false);
             gl.clear(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+
+            let material_bindings = MaterialBindings {
+                ambient: None,
+                emissive: Some(String::from("emissive")),
+                diffuse: Some(String::from("diffuse")),
+                specular: Some(String::from("specular")),
+                shininess: None,
+                dissolve: Some(String::from("opacity")),
+                optical_density: None,
+                ambient_texture: None,
+                diffuse_texture: Some((String::from("diffuse_tex"), 0)),
+                specular_texture: Some((String::from("specular_tex"), 1)),
+                normal_texture: Some((String::from("normal_tex"), 2)),
+                shininess_texture: None,
+                dissolve_texture: Some((String::from("opacity_tex"), 3)),
+                illumination_model: None,
+            };
             for obj in objects {
                 gl.uniform_matrix_4_f32_slice(
                     gl.get_uniform_location(self.voxelizer_program, "model_to_world")
@@ -279,6 +296,9 @@ impl Voxelizer {
                     "position",
                     Some("normal"),
                     Some("tex_coord"),
+                    None,
+                    None,
+                    Some(&material_bindings),
                 );
             }
 

@@ -10,7 +10,7 @@ use microglut::{
     glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, BLEND, COLOR_ATTACHMENT0,
-        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEPTH_BUFFER_BIT, DEPTH_TEST,
+        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEBUG_OUTPUT, DEPTH_BUFFER_BIT, DEPTH_TEST,
         DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
         SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D,
         TEXTURE_MAX_LEVEL,
@@ -20,7 +20,7 @@ use microglut::{
         keyboard::{Keycode, Mod, Scancode},
         mouse::MouseButton,
     },
-    MicroGLUT, Model, Window,
+    MaterialBindings, MicroGLUT, Model, Texture, Window,
 };
 use object::Object;
 use quad_renderer::QuadRenderer;
@@ -165,6 +165,23 @@ impl App {
                 perspective_mat.as_ref(),
             );
 
+            let material_bindings = MaterialBindings {
+                ambient: None,
+                emissive: Some(String::from("emissive")),
+                diffuse: Some(String::from("diffuse")),
+                specular: Some(String::from("specular")),
+                shininess: None,
+                dissolve: Some(String::from("opacity")),
+                optical_density: None,
+                ambient_texture: None,
+                diffuse_texture: Some((String::from("diffuse_tex"), 0)),
+                specular_texture: Some((String::from("specular_tex"), 1)),
+                normal_texture: Some((String::from("normal_map"), 2)),
+                shininess_texture: None,
+                dissolve_texture: Some((String::from("opacity_tex"), 3)),
+                illumination_model: None,
+            };
+
             for object in &self.objects {
                 gl.uniform_matrix_4_f32_slice(
                     gl.get_uniform_location(self.scene_program, "model_to_world")
@@ -182,9 +199,16 @@ impl App {
                         .as_ref(),
                     object.emissive.as_ref(),
                 );
-                object
-                    .model
-                    .draw(gl, self.scene_program, "position", Some("v_normal"), None);
+                object.model.draw(
+                    gl,
+                    self.scene_program,
+                    "position",
+                    Some("v_normal"),
+                    Some("v_tex_coord"),
+                    Some("v_tangent"),
+                    Some("v_bitangent"),
+                    Some(&material_bindings),
+                );
             }
 
             gl.bind_framebuffer(FRAMEBUFFER, None);
@@ -365,7 +389,7 @@ impl MicroGLUT for App {
         let rc_binding = 2;
         let radiance_cascades = RadianceCascades::new(
             gl,
-            5.0,
+            6.0,
             screen_resolution,
             4.0,
             rc_binding,
@@ -390,7 +414,7 @@ impl MicroGLUT for App {
             max_steps: 400.0,
             max_ray_distance: 30.0,
             z_near: 0.1,
-            z_far: 20.0,
+            z_far: 30.0,
             _padding: [0.0, 0.0],
         };
 
@@ -464,23 +488,45 @@ impl MicroGLUT for App {
                 include_bytes!("../models/Rock.obj"),
                 Some(&|_| tobj::load_mtl_buf(&mut &include_bytes!("../models/Rock.mtl")[..])),
                 None,
+                false,
             );
 
             let cube_model =
-                Model::load_obj_data(gl, include_bytes!("../models/cube.obj"), None, None);
+                Model::load_obj_data(gl, include_bytes!("../models/cube.obj"), None, None, false);
             let cube = Object::new(cube_model);
 
-            let suzanne_model =
-                Model::load_obj_data(gl, include_bytes!("../models/suzanne.obj"), None, None);
+            let suzanne_model = Model::load_obj_data(
+                gl,
+                include_bytes!("../models/suzanne.obj"),
+                None,
+                None,
+                false,
+            );
             let suzanne = Object::new(suzanne_model);
 
-            let armadillo_model =
-                Model::load_obj_data(gl, include_bytes!("../models/armadillo.obj"), None, None);
-            let armadillo = Object::new(armadillo_model);
+            //let armadillo_model =
+            //    Model::load_obj_data(gl, include_bytes!("../models/armadillo.obj"), None, None);
+            //let armadillo = Object::new(armadillo_model);
 
-            let sphere_model =
-                Model::load_obj_data(gl, include_bytes!("../models/groundsphere.obj"), None, None);
+            let sphere_model = Model::load_obj_data(
+                gl,
+                include_bytes!("../models/groundsphere.obj"),
+                None,
+                None,
+                false,
+            );
             let sphere = Object::new(sphere_model);
+
+            let sponza_model = Model::load_obj_data(
+                gl,
+                include_bytes!("../models/sponza.obj"),
+                Some(&|_| tobj::load_mtl_buf(&mut &include_bytes!("../models/sponza.mtl")[..])),
+                Some(&|name| {
+                    load_bytes!(&format!("../textures/sponza_textures/{}", name)).to_vec()
+                }),
+                true,
+            );
+            let sponza = Object::new(sponza_model);
 
             //let objects = vec![
             //    Object::new(rock.clone())
@@ -504,24 +550,20 @@ impl MicroGLUT for App {
             //];
 
             let objects = vec![
-                cube.clone()
-                    .with_emissive(Vec4::new(1.0, 1.0, 1.0, 1.0))
-                    .with_albedo(Vec4::W)
-                    .with_translation(Vec3::new(0., 1.1, 2.)),
-                //sphere
-                //    .clone()
-                //    .with_emissive(Vec4::new(0.7, 0.7, 0.7, 1.0))
+                //cube.clone()
+                //    .with_emissive(Vec4::new(1.0, 1.0, 1.0, 1.0))
                 //    .with_albedo(Vec4::W)
-                //    .with_translation(Vec3::new(0.0, -1.0, 2.0)),
-                cube.clone()
-                    .with_albedo(Vec4::new(0.05, 0.1, 1., 1.))
-                    .with_scale(Vec3::new(10., 0.25, 10.))
-                    .with_translation(Vec3::new(0., -0.25, 0.)), //.with_emissive(Vec4::new(0.0, 0.0, 0.3, 1.0)),
-                suzanne
-                    .clone()
-                    .with_albedo(Vec4::ONE)
-                    .with_rotation(Quat::from_rotation_y(-PI * 0.25))
-                    .with_translation(Vec3::new(6.0, -0.2, -2.0)),
+                //    .with_translation(Vec3::new(0., 1.1, 2.)),
+                //cube.clone()
+                //    .with_albedo(Vec4::new(0.05, 0.1, 1., 1.))
+                //    .with_scale(Vec3::new(10., 0.25, 10.))
+                //    .with_translation(Vec3::new(0., -0.25, 0.)), //.with_emissive(Vec4::new(0.0, 0.0, 0.3, 1.0)),
+                //suzanne
+                //    .clone()
+                //    .with_albedo(Vec4::ONE)
+                //    .with_rotation(Quat::from_rotation_y(-PI * 0.25))
+                //    .with_translation(Vec3::new(6.0, -0.2, -2.0)),
+                sponza.with_uniform_scale(0.01),
             ];
 
             App {

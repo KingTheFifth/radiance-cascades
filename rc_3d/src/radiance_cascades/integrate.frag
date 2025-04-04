@@ -148,7 +148,7 @@ void main() {
             r += texelFetch(cascade, dir_block_start + probe_coords[3], 0) * probe_weights[3];
 
             const float azimuth = (azi + 0.5) * (2.0 * 3.14159265 * azimuthal_dirs_inv);
-            const vec3 cone_direction = normalize(mat3(world_to_view) * vec3(
+            const vec3 cone_direction = normalize(vec3(
                 cos(azimuth) * sin_altitude,
                 cos_altitude,
                 sin(azimuth) * sin_altitude
