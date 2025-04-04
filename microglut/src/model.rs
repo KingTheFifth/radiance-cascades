@@ -4,7 +4,9 @@ use std::{collections::HashMap, io::BufReader, path::Path, str::FromStr};
 use glam::{Vec2, Vec3};
 use glow::{
     Buffer, Context, HasContext as _, NativeProgram, VertexArray, ARRAY_BUFFER,
-    ELEMENT_ARRAY_BUFFER, FLOAT, STATIC_DRAW, TEXTURE0, TEXTURE_2D, TRIANGLES, UNSIGNED_INT,
+    ELEMENT_ARRAY_BUFFER, FLOAT, LINEAR, LINEAR_MIPMAP_LINEAR, MAX_TEXTURE_MAX_ANISOTROPY_EXT,
+    REPEAT, STATIC_DRAW, TEXTURE0, TEXTURE_2D, TEXTURE_MAG_FILTER, TEXTURE_MAX_ANISOTROPY_EXT,
+    TEXTURE_MIN_FILTER, TEXTURE_WRAP_R, TEXTURE_WRAP_S, TRIANGLES, UNSIGNED_INT,
 };
 
 use crate::Texture;
@@ -402,45 +404,62 @@ impl Material {
         });
 
         if let Some(tex_loader) = texture_loader {
-            let ambient_texture = material
-                .ambient_texture
-                .map(|texture_name| tex_loader(&texture_name))
-                .map(|data| Texture::load(gl, &data, true));
-            let diffuse_texture = material
-                .diffuse_texture
-                .map(|texture_name| tex_loader(&texture_name))
-                .map(|data| Texture::load(gl, &data, true));
-            let specular_texture = material
-                .specular_texture
-                .map(|texture_name| tex_loader(&texture_name))
-                .map(|data| Texture::load(gl, &data, true));
-            let normal_texture = material
-                .normal_texture
-                .map(|texture_name| tex_loader(&texture_name))
-                .map(|data| Texture::load(gl, &data, true));
-            let shininess_texture = material
-                .shininess_texture
-                .map(|texture_name| tex_loader(&texture_name))
-                .map(|data| Texture::load(gl, &data, true));
-            let dissolve_texture = material
-                .dissolve_texture
-                .map(|texture_name| tex_loader(&texture_name))
-                .map(|data| Texture::load(gl, &data, true));
-            Material {
-                ambient: material.ambient.map(Vec3::from_array),
-                emissive,
-                diffuse: material.diffuse.map(Vec3::from_array),
-                specular: material.specular.map(Vec3::from_array),
-                shininess: material.shininess,
-                dissolve: material.dissolve,
-                optical_density: material.optical_density,
-                ambient_texture,
-                diffuse_texture,
-                specular_texture,
-                normal_texture,
-                shininess_texture,
-                dissolve_texture,
-                illumination_model: material.illumination_model,
+            unsafe {
+                let ambient_texture = material
+                    .ambient_texture
+                    .map(|texture_name| tex_loader(&texture_name))
+                    .map(|data| Texture::load(gl, &data, true));
+                let diffuse_texture = material
+                    .diffuse_texture
+                    .map(|texture_name| tex_loader(&texture_name))
+                    .map(|data| Texture::load(gl, &data, true));
+                let specular_texture = material
+                    .specular_texture
+                    .map(|texture_name| tex_loader(&texture_name))
+                    .map(|data| Texture::load(gl, &data, true));
+
+                let max_anisotropy = gl.get_parameter_f32(MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+                let normal_texture = material
+                    .normal_texture
+                    .map(|texture_name| tex_loader(&texture_name))
+                    .map(|data| {
+                        Texture::load_with_parameters(
+                            gl,
+                            &data,
+                            &[
+                                (TEXTURE_WRAP_S, REPEAT as _),
+                                (TEXTURE_WRAP_R, REPEAT as _),
+                                (TEXTURE_MIN_FILTER, LINEAR_MIPMAP_LINEAR as _),
+                                (TEXTURE_MAG_FILTER, LINEAR as _),
+                            ],
+                            &[(TEXTURE_MAX_ANISOTROPY_EXT, max_anisotropy)],
+                            true,
+                        )
+                    });
+                let shininess_texture = material
+                    .shininess_texture
+                    .map(|texture_name| tex_loader(&texture_name))
+                    .map(|data| Texture::load(gl, &data, true));
+                let dissolve_texture = material
+                    .dissolve_texture
+                    .map(|texture_name| tex_loader(&texture_name))
+                    .map(|data| Texture::load(gl, &data, true));
+                Material {
+                    ambient: material.ambient.map(Vec3::from_array),
+                    emissive,
+                    diffuse: material.diffuse.map(Vec3::from_array),
+                    specular: material.specular.map(Vec3::from_array),
+                    shininess: material.shininess,
+                    dissolve: material.dissolve,
+                    optical_density: material.optical_density,
+                    ambient_texture,
+                    diffuse_texture,
+                    specular_texture,
+                    normal_texture,
+                    shininess_texture,
+                    dissolve_texture,
+                    illumination_model: material.illumination_model,
+                }
             }
         } else {
             Material {
