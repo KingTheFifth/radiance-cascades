@@ -15,7 +15,7 @@ use microglut::{
         SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D,
         TEXTURE_MAX_LEVEL,
     },
-    imgui, load_shaders,
+    imgui, load_shaders, load_tangent_buf,
     sdl2::{
         keyboard::{Keycode, Mod, Scancode},
         mouse::MouseButton,
@@ -488,16 +488,24 @@ impl MicroGLUT for App {
                 include_bytes!("../models/Rock.obj"),
                 Some(&|_| tobj::load_mtl_buf(&mut &include_bytes!("../models/Rock.mtl")[..])),
                 None,
+                None,
                 false,
             );
 
-            let cube_model =
-                Model::load_obj_data(gl, include_bytes!("../models/cube.obj"), None, None, false);
+            let cube_model = Model::load_obj_data(
+                gl,
+                include_bytes!("../models/cube.obj"),
+                None,
+                None,
+                None,
+                false,
+            );
             let cube = Object::new(cube_model);
 
             let suzanne_model = Model::load_obj_data(
                 gl,
                 include_bytes!("../models/suzanne.obj"),
+                None,
                 None,
                 None,
                 false,
@@ -513,6 +521,7 @@ impl MicroGLUT for App {
                 include_bytes!("../models/groundsphere.obj"),
                 None,
                 None,
+                None,
                 false,
             );
             let sphere = Object::new(sphere_model);
@@ -524,8 +533,26 @@ impl MicroGLUT for App {
                 Some(&|name| {
                     load_bytes!(&format!("../textures/sponza_textures/{}", name)).to_vec()
                 }),
-                true,
+                Some(&|name| {
+                    load_bytes!(&format!(
+                        "../models/sponza_tangents/g {}_tangents.txt",
+                        name
+                    ))
+                    .to_vec()
+                }),
+                false,
             );
+
+            let (vase_tangents, vase_bitangents) = load_tangent_buf(load_bytes!(
+                "../models/sponza_tangents/vase_round_tangents.txt"
+            ))
+            .unwrap();
+
+            sponza_model.meshes.iter().for_each(|mesh| {
+                if mesh.material == Some(1) {
+                    mesh.load_tangents(gl, &vase_tangents, &vase_bitangents);
+                }
+            });
             let sponza = Object::new(sponza_model);
 
             //let objects = vec![

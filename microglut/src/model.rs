@@ -1,5 +1,12 @@
 #![expect(clippy::missing_safety_doc)]
-use std::{collections::HashMap, io::BufReader, path::Path, str::FromStr};
+use core::fmt;
+use std::{
+    collections::HashMap,
+    error::Error,
+    io::{BufRead, BufReader},
+    path::Path,
+    str::{FromStr, SplitWhitespace},
+};
 
 use glam::{Vec2, Vec3};
 use glow::{
@@ -13,6 +20,7 @@ use crate::Texture;
 
 type MaterialLoader = dyn Fn(&Path) -> tobj::MTLLoadResult;
 type TextureLoader = dyn Fn(&str) -> Vec<u8>;
+type TangentLoader = dyn Fn(&str) -> Vec<u8>;
 
 #[derive(Debug, Clone)]
 pub struct Model {
@@ -30,7 +38,7 @@ pub struct Mesh {
     texture_coordinate_buffer: Option<Buffer>,
     index_buffer: Buffer,
     num_indices: u32,
-    material: Option<usize>, // index into Model.material, if any
+    pub material: Option<usize>, // index into Model.material, if any
 }
 
 fn is_invalid_tangent(v: Vec3) -> bool {
@@ -57,11 +65,66 @@ fn reconstruct_bitangent(tangent: Vec3, bitangent: Vec3, normal: Vec3) -> Vec3 {
     }
 }
 
+fn parse_vec3(word: SplitWhitespace) -> Result<Vec3, LoadError> {
+    let v = word
+        .take(3)
+        .map(FromStr::from_str)
+        .collect::<Result<Vec<f32>, _>>()
+        .map_err(|_| LoadError::ParseError)
+        .map(|v| Vec3::from_slice(&v))
+        .unwrap();
+    Ok(v)
+}
+
+#[derive(Debug)]
+pub enum LoadError {
+    ReadError,
+    ParseError,
+}
+
+impl fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = match *self {
+            LoadError::ReadError => "read error",
+            LoadError::ParseError => "parse error",
+        };
+        f.write_str(msg)
+    }
+}
+
+impl Error for LoadError {}
+
+pub fn load_tangent_buf(data: &[u8]) -> Result<(Vec<Vec3>, Vec<Vec3>), LoadError> {
+    let reader = BufReader::new(data);
+
+    let mut tangents: Vec<Vec3> = vec![];
+    let mut bitangents: Vec<Vec3> = vec![];
+    for line in reader.lines() {
+        let (line, mut words) = match line {
+            Ok(ref line) => (&line[..], line[..].split_whitespace()),
+            Err(_e) => {
+                #[cfg(feature = "log")]
+                log::error!("load_tangent_buf - failed to read line due to {}", _e);
+                return Err(LoadError::ReadError);
+            }
+        };
+        match words.next() {
+            Some("#") | None => continue,
+            Some("t") => tangents.push(parse_vec3(words)?),
+            Some("bt") => bitangents.push(parse_vec3(words)?),
+            Some(_) => {}
+        }
+    }
+    Ok((tangents, bitangents))
+}
+
 impl Mesh {
     fn new(
         gl: &Context,
         mesh_data: tobj::Mesh,
         material: Option<usize>,
+        name: &str,
+        tangent_loader: Option<&TangentLoader>,
         generate_tangents: bool,
     ) -> Self {
         let (vertex_array, vertex_buffer, index_buffer) = unsafe {
@@ -85,6 +148,8 @@ impl Mesh {
         let has_normals = normals.is_some();
         let has_texture_coordinates = texture_coordinates.is_some();
 
+        let can_generate_tangets = generate_tangents && has_normals && has_texture_coordinates;
+
         let mesh = Mesh {
             vertex_array,
             vertex_buffer,
@@ -95,12 +160,12 @@ impl Mesh {
             } else {
                 None
             },
-            tangent_buffer: if generate_tangents && has_normals && has_texture_coordinates {
+            tangent_buffer: if tangent_loader.is_some() || can_generate_tangets {
                 unsafe { Some(gl.create_buffer().unwrap()) }
             } else {
                 None
             },
-            bitangent_buffer: if generate_tangents && has_normals && has_texture_coordinates {
+            bitangent_buffer: if tangent_loader.is_some() || can_generate_tangets {
                 unsafe { Some(gl.create_buffer().unwrap()) }
             } else {
                 None
@@ -121,6 +186,11 @@ impl Mesh {
             }
             if let Some(texture_coordinates) = &texture_coordinates {
                 mesh.texture_data_f32(gl, texture_coordinates);
+            }
+
+            if let Some(tangent_loader) = tangent_loader {
+                let (tangents, bitangents) = load_tangent_buf(&tangent_loader(name)).unwrap();
+                mesh.load_tangents(gl, &tangents, &bitangents);
             }
 
             if generate_tangents {
@@ -277,6 +347,19 @@ impl Mesh {
 
         gl.bind_buffer(ARRAY_BUFFER, self.bitangent_buffer);
         gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(&bitangents), STATIC_DRAW);
+    }
+
+    pub unsafe fn load_tangents(&self, gl: &Context, tangents: &[Vec3], bitangents: &[Vec3]) {
+        if let Some(tangent_buffer) = self.tangent_buffer {
+            gl.bind_vertex_array(Some(self.vertex_array));
+            gl.bind_buffer(ARRAY_BUFFER, Some(tangent_buffer));
+            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(tangents), STATIC_DRAW);
+        }
+        if let Some(bitangent_buffer) = self.bitangent_buffer {
+            gl.bind_vertex_array(Some(self.vertex_array));
+            gl.bind_buffer(ARRAY_BUFFER, Some(bitangent_buffer));
+            gl.buffer_data_u8_slice(ARRAY_BUFFER, bytemuck::cast_slice(bitangents), STATIC_DRAW);
+        }
     }
 
     pub fn bind(
@@ -730,6 +813,7 @@ impl Model {
         data: &[u8],
         material_loader: Option<&MaterialLoader>,
         texture_loader: Option<&TextureLoader>,
+        tangent_loader: Option<&TangentLoader>,
         generate_tangents: bool,
     ) -> Self {
         let model = tobj::load_obj_buf(
@@ -751,7 +835,14 @@ impl Model {
             .into_iter()
             .map(|mesh| {
                 let material_id = mesh.mesh.material_id;
-                Mesh::new(gl, mesh.mesh, material_id, generate_tangents)
+                Mesh::new(
+                    gl,
+                    mesh.mesh,
+                    material_id,
+                    &mesh.name,
+                    tangent_loader,
+                    generate_tangents,
+                )
             })
             .collect();
         // TODO: can we have materials without textures?
