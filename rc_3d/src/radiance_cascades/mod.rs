@@ -47,6 +47,10 @@ struct RadianceCascadesConstants {
     c0_probe_spacing: f32,
     c0_interval_length: f32,
     normal_offset: f32,
+    gamma: f32,
+    ambient_occlusion_factor: f32,
+    diffuse_intensity: f32,
+    ambient_occlusion: f32,
     _padding: [f32; 2],
 }
 
@@ -119,6 +123,10 @@ impl RadianceCascades {
             c0_resolution,
             cascade_count,
             normal_offset: 0.1,
+            ambient_occlusion_factor: 2.0,
+            gamma: 1.0,
+            diffuse_intensity: 15.0,
+            ambient_occlusion: 1.0,
             _padding: [0.0, 0.0],
         };
         let constants_ssbo_binding = binding_point;
@@ -402,7 +410,22 @@ impl RadianceCascades {
 
     pub fn ui(&mut self, gl: &Context, ui: &imgui::Ui) {
         let mut constants_changed = false;
+        let mut ao = self.constants.ambient_occlusion != 0.0;
         if ui.tree_node("Radiance cascades").is_some() {
+            if ui.tree_node("GI parameters").is_some() {
+                constants_changed = constants_changed || ui.checkbox("AO", &mut ao);
+                constants_changed = constants_changed
+                    || ui
+                        .input_float("AO factor", &mut self.constants.ambient_occlusion_factor)
+                        .build();
+                constants_changed = constants_changed
+                    || ui
+                        .input_float("Diffuse intensity", &mut self.constants.diffuse_intensity)
+                        .build();
+                constants_changed =
+                    constants_changed || ui.input_float("Gamma", &mut self.constants.gamma).build();
+            }
+
             ui.input_scalar("Cascade index", &mut self.debug_cascade_index)
                 .build();
 
@@ -422,6 +445,8 @@ impl RadianceCascades {
 
             ui.slider("Ambient level", 0.0, 1.0, &mut self.ambient_level);
         }
+
+        self.constants.ambient_occlusion = ao as i32 as f32;
 
         if constants_changed {
             self.constants.upload_to_buffer(gl, self.constants_ssbo);

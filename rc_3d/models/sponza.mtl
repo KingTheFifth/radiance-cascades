@@ -11,7 +11,7 @@ newmtl leaf
 	Ka 0.5880 0.5880 0.5880
 	Kd 0.5880 0.5880 0.5880
 	Ks 0.0000 0.0000 0.0000
-	Ke 0.0000 0.0000 0.0000
+	Ke 0.0300 3.0000 0.0300
 	map_Kd textures/sponza_thorn_diff.tga
 	map_Ks textures/sponza_thorn_spec.tga
 	map_d textures/sponza_thorn_mask.tga
