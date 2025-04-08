@@ -23,7 +23,7 @@ enum VisualizationMode {
 pub struct Voxelizer {
     resolution: Vec3,
     origin: Vec3,
-    volume_half_side: f32,
+    volume_side_lengths: Vec3,
 
     voxel_texture: NativeTexture,
     voxelizer_program: NativeProgram,
@@ -44,7 +44,7 @@ pub struct Voxelizer {
 }
 
 impl Voxelizer {
-    pub fn new(gl: &Context, resolution: Vec3, origin: Vec3, volume_half_side: f32) -> Self {
+    pub fn new(gl: &Context, resolution: Vec3, origin: Vec3, volume_side_lengths: Vec3) -> Self {
         unsafe {
             let voxelizer_program =
                 LoadShaders::new(include_str!("voxelize.vert"), include_str!("voxelize.frag"))
@@ -122,7 +122,7 @@ impl Voxelizer {
             Self {
                 resolution,
                 origin,
-                volume_half_side,
+                volume_side_lengths,
                 voxel_texture,
                 voxelizer_program,
                 tracer_program: visualizing_program,
@@ -143,13 +143,14 @@ impl Voxelizer {
     }
 
     pub fn world_to_voxel(&self) -> Mat4 {
+        let half_side_lengths = self.volume_side_lengths * 0.5;
         let projection = Mat4::orthographic_rh(
-            -self.volume_half_side,
-            self.volume_half_side,
-            -self.volume_half_side,
-            self.volume_half_side,
-            -self.volume_half_side,
-            self.volume_half_side,
+            -half_side_lengths.x,
+            half_side_lengths.x,
+            -half_side_lengths.y,
+            half_side_lengths.y,
+            -half_side_lengths.z,
+            half_side_lengths.z,
         );
         let projection_z = projection * Mat4::look_to_rh(self.origin, Vec3::NEG_Z, Vec3::Y);
         let world_to_voxel = Mat4::from_scale(self.resolution)
@@ -212,16 +213,33 @@ impl Voxelizer {
             }
             gl.viewport(0, 0, self.resolution.x as _, self.resolution.y as _);
 
+            let half_side_lengths = self.volume_side_lengths * 0.5;
             let projection = Mat4::orthographic_rh(
-                -self.volume_half_side,
-                self.volume_half_side,
-                -self.volume_half_side,
-                self.volume_half_side,
-                -self.volume_half_side,
-                self.volume_half_side,
+                -half_side_lengths.x,
+                half_side_lengths.x,
+                -half_side_lengths.y,
+                half_side_lengths.y,
+                -half_side_lengths.z,
+                half_side_lengths.z,
             );
-            let projection_x = projection * Mat4::look_to_rh(self.origin, Vec3::X, Vec3::Y);
-            let projection_y = projection * Mat4::look_to_rh(self.origin, Vec3::Y, Vec3::Z);
+            let p_x = Mat4::orthographic_rh(
+                -half_side_lengths.z,
+                half_side_lengths.z,
+                -half_side_lengths.y,
+                half_side_lengths.y,
+                -half_side_lengths.x,
+                half_side_lengths.x,
+            );
+            let p_y = Mat4::orthographic_rh(
+                -half_side_lengths.x,
+                half_side_lengths.x,
+                -half_side_lengths.z,
+                half_side_lengths.z,
+                -half_side_lengths.y,
+                half_side_lengths.y,
+            );
+            let projection_x = p_x * Mat4::look_to_rh(self.origin, Vec3::X, Vec3::Y);
+            let projection_y = p_y * Mat4::look_to_rh(self.origin, Vec3::Y, Vec3::Z);
             let projection_z = projection * Mat4::look_to_rh(self.origin, Vec3::NEG_Z, Vec3::Y);
 
             gl.uniform_matrix_4_f32_slice(
@@ -330,13 +348,14 @@ impl Voxelizer {
             camera.position - camera.forward() - 0.5 * (viewport_u + viewport_v);
         let pixel_down_left = viewport_down_left + 0.5 * (pixel_delta_u + pixel_delta_v);
 
+        let half_side_lengths = self.volume_side_lengths * 0.5;
         let projection = Mat4::orthographic_rh(
-            -self.volume_half_side,
-            self.volume_half_side,
-            -self.volume_half_side,
-            self.volume_half_side,
-            -self.volume_half_side,
-            self.volume_half_side,
+            -half_side_lengths.x,
+            half_side_lengths.x,
+            -half_side_lengths.y,
+            half_side_lengths.y,
+            -half_side_lengths.z,
+            half_side_lengths.z,
         );
         let projection_z = projection * Mat4::look_to_rh(self.origin, Vec3::NEG_Z, Vec3::Y);
         //* Mat4::from_scale(Vec3::new(self.resolution.x, self.resolution.y, 1.0));
@@ -462,7 +481,7 @@ impl Voxelizer {
         if ui.tree_node("Voxelisation").is_some() {
             ui.separator_with_text("Voxelisation parameters");
             ui.input_float3("Origin", self.origin.as_mut()).build();
-            ui.input_float("Volume half side length", &mut self.volume_half_side)
+            ui.input_float3("Volume side lengths", self.volume_side_lengths.as_mut())
                 .build();
             ui.checkbox("Voxelise with MSAA", &mut self.use_msaa);
 

@@ -505,12 +505,12 @@ impl RadianceCascades {
                 || ui.slider(
                     "Interval length",
                     0.0,
-                    50.0,
+                    10.0,
                     &mut self.constants.c0_interval_length,
                 );
 
             constants_changed = constants_changed
-                || ui.slider("Normal offset", 0.0, 0.5, &mut self.constants.normal_offset);
+                || ui.slider("Normal offset", 0.0, 1.0, &mut self.constants.normal_offset);
 
             ui.slider("Ambient level", 0.0, 1.0, &mut self.ambient_level);
         }

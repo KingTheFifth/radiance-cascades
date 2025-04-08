@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate load_file;
 
-use std::{collections::VecDeque, f32::consts::PI};
+use std::{collections::VecDeque, f32::consts::PI, ffi::CStr};
 
 use bytemuck::{Pod, Zeroable};
 use camera::Camera;
@@ -9,13 +9,13 @@ use microglut::{
     delta_time, elapsed_time,
     glam::{Mat4, Quat, Vec2, Vec3, Vec4},
     glow::{
-        Context, HasContext, NativeBuffer, NativeProgram, BLEND, COLOR_ATTACHMENT0,
+        Context, HasContext, NativeBuffer, NativeProgram, PixelPackData, BLEND, COLOR_ATTACHMENT0,
         COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEBUG_OUTPUT, DEPTH_BUFFER_BIT, DEPTH_TEST,
         DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
-        SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D,
-        TEXTURE_MAX_LEVEL,
+        RGBA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2,
+        TEXTURE_2D, TEXTURE_MAX_LEVEL, UNSIGNED_BYTE,
     },
-    imgui, load_shaders,
+    imgui, load_shaders, load_tangent_buf,
     sdl2::{
         keyboard::{Keycode, Mod, Scancode},
         mouse::MouseButton,
@@ -140,7 +140,7 @@ impl App {
             gl.use_program(Some(self.scene_program));
             gl.enable(BLEND);
             gl.enable(DEPTH_TEST);
-            gl.enable(CULL_FACE);
+            //gl.enable(CULL_FACE);
             gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
 
             gl.viewport(
@@ -350,6 +350,42 @@ impl App {
             self.quad_renderer.draw_screen_quad(gl, self.ssrt_program);
         }
     }
+
+    fn save_screen_to(&self, gl: &Context) {
+        unsafe {
+            let mut image: Vec<u8> = vec![];
+            image.resize(4 * 1280 * 720, 0);
+            let p = PixelPackData::Slice(&mut image);
+            //gl.read_buffer(COLOR_ATTACHMENT0);
+            //gl.pixel_store_i32(parameter, value);
+            gl.read_pixels(
+                0,
+                0,
+                self.screen_resolution.x as _,
+                self.screen_resolution.y as _,
+                RGBA,
+                UNSIGNED_BYTE,
+                p,
+            );
+
+            let rev_img: Vec<u8> = image
+                .chunks(4 * 1280)
+                .into_iter()
+                .rev()
+                .flatten()
+                .copied()
+                .collect();
+
+            image::save_buffer(
+                "test.png",
+                &rev_img,
+                self.screen_resolution.x as _,
+                self.screen_resolution.y as _,
+                image::ExtendedColorType::Rgba8,
+            )
+            .unwrap();
+        }
+    }
 }
 
 impl MicroGLUT for App {
@@ -364,23 +400,24 @@ impl MicroGLUT for App {
 
         let scene = SceneFBO::init(gl, screen_width, screen_height);
 
-        let voxel_res = 256.0;
-        let voxel_origin = Vec3::new(0.0, 0.0, 0.0);
-        let voxel_volume_half_side = 6.0;
+        let voxel_res = 300.0;
+        let voxel_origin = Vec3::new(0.0, 7.5, 0.0);
+        let voxel_volume_side_lengths = Vec3::new(30.0, 15.0, 16.0);
+        // Note: cracks in the voxelization may appear if all sides are not of the same length
         let voxelizer = Voxelizer::new(
             gl,
             Vec3::new(voxel_res, voxel_res, voxel_res),
             voxel_origin,
-            voxel_volume_half_side,
+            voxel_volume_side_lengths,
         );
         voxelizer.clear_voxels(gl, &quad_renderer, Vec4::new(0., 0., 0., 0.0));
 
         let camera = Camera::new(
             Vec3::new(0., 1., -1.),
             Vec3::Z,
-            PI * 0.5,
-            0.1,
-            20.0,
+            PI * 0.25,
+            0.3,
+            30.0,
             screen_width as f32 / screen_height as f32,
         );
 
@@ -413,7 +450,7 @@ impl MicroGLUT for App {
             hi_z_max_mip_level: 10.0,
             max_steps: 400.0,
             max_ray_distance: 30.0,
-            z_near: 0.1,
+            z_near: 0.3,
             z_far: 30.0,
             _padding: [0.0, 0.0],
         };
@@ -488,16 +525,24 @@ impl MicroGLUT for App {
                 include_bytes!("../models/Rock.obj"),
                 Some(&|_| tobj::load_mtl_buf(&mut &include_bytes!("../models/Rock.mtl")[..])),
                 None,
+                None,
                 false,
             );
 
-            let cube_model =
-                Model::load_obj_data(gl, include_bytes!("../models/cube.obj"), None, None, false);
+            let cube_model = Model::load_obj_data(
+                gl,
+                include_bytes!("../models/cube.obj"),
+                Some(&|_| tobj::load_mtl_buf(&mut &include_bytes!("../models/cube.mtl")[..])),
+                None,
+                None,
+                true,
+            );
             let cube = Object::new(cube_model);
 
             let suzanne_model = Model::load_obj_data(
                 gl,
                 include_bytes!("../models/suzanne.obj"),
+                None,
                 None,
                 None,
                 false,
@@ -513,6 +558,7 @@ impl MicroGLUT for App {
                 include_bytes!("../models/groundsphere.obj"),
                 None,
                 None,
+                None,
                 false,
             );
             let sphere = Object::new(sphere_model);
@@ -524,8 +570,26 @@ impl MicroGLUT for App {
                 Some(&|name| {
                     load_bytes!(&format!("../textures/sponza_textures/{}", name)).to_vec()
                 }),
-                true,
+                Some(&|name| {
+                    load_bytes!(&format!(
+                        "../models/sponza_tangents/g {}_tangents.txt",
+                        name
+                    ))
+                    .to_vec()
+                }),
+                false,
             );
+
+            let (vase_tangents, vase_bitangents) = load_tangent_buf(load_bytes!(
+                "../models/sponza_tangents/vase_round_tangents.txt"
+            ))
+            .unwrap();
+
+            sponza_model.meshes.iter().for_each(|mesh| {
+                if mesh.material == Some(1) {
+                    mesh.load_tangents(gl, &vase_tangents, &vase_bitangents);
+                }
+            });
             let sponza = Object::new(sponza_model);
 
             //let objects = vec![
@@ -563,6 +627,8 @@ impl MicroGLUT for App {
                 //    .with_albedo(Vec4::ONE)
                 //    .with_rotation(Quat::from_rotation_y(-PI * 0.25))
                 //    .with_translation(Vec3::new(6.0, -0.2, -2.0)),
+                // cube.with_albedo(Vec4::new(1.0, 0.0, 0.0, 0.2))
+                // .with_scale(Vec3::new(15.0, 15.0, 8.0)),
                 sponza.with_uniform_scale(0.01),
             ];
 
@@ -739,6 +805,10 @@ impl MicroGLUT for App {
         let mut constants_changed = false;
         ui.checkbox("Enable debug mode", &mut self.debug);
 
+        if ui.button("Save screenshot") {
+            self.save_screen_to(gl);
+        }
+
         if let Some(cb) = ui.begin_combo("Debug mode", self.debug_mode.to_string()) {
             for cur in DebugMode::VARIANTS {
                 if &self.debug_mode == cur {
@@ -797,6 +867,6 @@ fn main() {
     App::sdl2_window("Radiance cascades 3D prototype")
         .gl_version(4, 5)
         .debug_message_callback(debug_message_callback)
-        .window_size(1024, 1024)
+        .window_size(1280, 720)
         .start();
 }

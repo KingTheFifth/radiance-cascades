@@ -22,7 +22,7 @@ pub mod util;
 
 pub use fbo::FBO;
 pub use load_shaders::{load_compute_shader, load_shaders, LoadShaders};
-pub use model::{MaterialBindings, Model};
+pub use model::{load_tangent_buf, MaterialBindings, Model};
 pub use texture::Texture;
 use time::set_delta_time;
 pub use time::{delta_time, elapsed_time};

@@ -239,7 +239,7 @@ vec4 trace_radiance_hi_z(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_leng
 vec4 trace_radiance_naive_screen_space(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
     vec3 ray_end_vs = ray_start_vs + ray_dir_vs * interval_length;
 
-    float steps = float(20 * (2 << (int(cascade_index) + 1)));  // TODO: Make configurable
+    float steps = float(20 * (1 << (int(cascade_index) + 1)));  // TODO: Make configurable
     float step_count_inv = 1.0 / (steps - 1.0);
     for (float i = 0.0; i < steps; i++) {
         float traveled_distance = i * step_count_inv;
@@ -388,19 +388,30 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_b
 }
 
 void main() {
+    // Note: These factors for increasing the number of directions and the probe spacing
+    // ensure that all cascades have the same dimensions which is nice to work with
     const float num_altitudinal_rays = 4.0 * pow(2.0, cascade_index);
     const float num_azimuthal_rays = 4.0 * pow(2.0, cascade_index);
-
     const vec2 probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index));
+
     const vec2 probe_count = floor(screen_res / probe_spacing); // This is also the size of a direction block
     const vec2 cascade_res = vec2(
         probe_count.x * num_azimuthal_rays,
         probe_count.y * num_altitudinal_rays
-    );  // Note: the width should remain constant and the height should half for every cascade
+    );
 
     const vec2 pixel_coord = gl_FragCoord.xy;
     const vec2 coord_within_dir_block = mod(pixel_coord, probe_count);
     const vec2 dir_block_index = floor(pixel_coord / probe_count);
+
+    const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
+    const vec3 normal_ws = octahedral_decode(texture(scene_normal, probe_pixel * screen_res_inv).xy);
+    const vec3 normal_vs = normalize(mat3(world_to_view) * normal_ws);
+    const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
+    //const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * normal_offset;
+    const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz;
+    const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(min_probe_pos_vs, 1.0)).xyz;
+    //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
     #ifdef DEBUG_INTERVALS
     const float interval_length = c0_interval_length;
@@ -409,16 +420,6 @@ void main() {
     const float interval_length = c0_interval_length * pow(2.0, cascade_index);
     const float interval_start = c0_interval_length * ((1.0 - pow(2.0, cascade_index)) / (1.0 - 2.0));
     #endif
-
-    const vec2 probe_pixel = (coord_within_dir_block + 0.0) * probe_spacing; // Probes in center of pixel
-    const vec3 normal_ws = octahedral_decode(texture(scene_normal, (probe_pixel + 0.5 * probe_spacing) * screen_res_inv).xy);
-    const vec3 normal_vs = normalize(mat3(world_to_view) * normal_ws);
-    //const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
-    vec3 min_probe_pos_ss = vec3(probe_pixel, texelFetch(hi_z_tex, ivec2(probe_pixel), 0).r);
-    const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * normal_offset;
-    //min_probe_pos_ss = view_pos_to_screen_pos(min_probe_pos_vs).xyz;
-    const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(min_probe_pos_vs, 1.0)).xyz;
-    //const vec3 probe_pos_max = vec3(probe_pixel_pos, textureLod(hi_z_tex, probe_pixel_pos, 0).g);
 
     if (min_probe_pos_ss.z >= 0.99999) {
         // Do not calculate probes placed in the sky/out of bounds
@@ -437,8 +438,10 @@ void main() {
     const vec3 ray_dir_vs = normalize(mat3(world_to_view) * ray_dir_ws);
 
     // TODO: Trace both min and max depth probes at the same time somehow
-    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
-    const vec3 ray_start_vs = min_probe_pos_vs + ray_dir_vs * interval_start;
+    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start + normal_ws * normal_offset;
+    const vec3 ray_start_vs = min_probe_pos_vs + ray_dir_vs * interval_start + normal_vs * normal_offset;
+    // const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
+    // const vec3 ray_start_vs = min_probe_pos_vs + ray_dir_vs * interval_start;
 
     #if (TRACE_METHOD == NAIVE_SS)
     vec4 radiance_min = trace_radiance_naive_screen_space(ray_start_vs, ray_dir_vs, interval_length);
