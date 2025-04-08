@@ -400,14 +400,15 @@ impl MicroGLUT for App {
 
         let scene = SceneFBO::init(gl, screen_width, screen_height);
 
-        let voxel_res = 256.0;
-        let voxel_origin = Vec3::new(0.0, 0.0, 0.0);
-        let voxel_volume_half_side = 6.0;
+        let voxel_res = 300.0;
+        let voxel_origin = Vec3::new(0.0, 7.5, 0.0);
+        let voxel_volume_side_lengths = Vec3::new(30.0, 15.0, 16.0);
+        // Note: cracks in the voxelization may appear if all sides are not of the same length
         let voxelizer = Voxelizer::new(
             gl,
             Vec3::new(voxel_res, voxel_res, voxel_res),
             voxel_origin,
-            voxel_volume_half_side,
+            voxel_volume_side_lengths,
         );
         voxelizer.clear_voxels(gl, &quad_renderer, Vec4::new(0., 0., 0., 0.0));
 
@@ -531,10 +532,10 @@ impl MicroGLUT for App {
             let cube_model = Model::load_obj_data(
                 gl,
                 include_bytes!("../models/cube.obj"),
+                Some(&|_| tobj::load_mtl_buf(&mut &include_bytes!("../models/cube.mtl")[..])),
                 None,
                 None,
-                None,
-                false,
+                true,
             );
             let cube = Object::new(cube_model);
 
@@ -626,6 +627,8 @@ impl MicroGLUT for App {
                 //    .with_albedo(Vec4::ONE)
                 //    .with_rotation(Quat::from_rotation_y(-PI * 0.25))
                 //    .with_translation(Vec3::new(6.0, -0.2, -2.0)),
+                // cube.with_albedo(Vec4::new(1.0, 0.0, 0.0, 0.2))
+                // .with_scale(Vec3::new(15.0, 15.0, 8.0)),
                 sponza.with_uniform_scale(0.01),
             ];
 
