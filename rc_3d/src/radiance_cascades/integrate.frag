@@ -69,7 +69,8 @@ float linearize_depth(float depth) {
 }
 
 void main() {
-    const vec2 block_coord = gl_FragCoord.xy / c0_probe_spacing;
+    const float probe_spacing = c0_probe_spacing * pow(2.0, cascade_index);
+    const vec2 block_coord = gl_FragCoord.xy / probe_spacing;
     const ivec2 block_coord_base = ivec2(floor(block_coord));
     const vec2 ratio = fract(block_coord);
     const vec4 bilinear_weights = vec4(
@@ -87,10 +88,10 @@ void main() {
         block_coord_base + offsets[3]
     };
     const ivec2 probe_screen_coords[4] = {
-        probe_coords[0] * int(c0_probe_spacing),
-        probe_coords[1] * int(c0_probe_spacing),
-        probe_coords[2] * int(c0_probe_spacing),
-        probe_coords[3] * int(c0_probe_spacing)
+        probe_coords[0] * int(probe_spacing),
+        probe_coords[1] * int(probe_spacing),
+        probe_coords[2] * int(probe_spacing),
+        probe_coords[3] * int(probe_spacing)
     };
 
     const float depth = linearize_depth(texelFetch(depth_tex, ivec2(gl_FragCoord.xy), 0).x);
@@ -127,7 +128,7 @@ void main() {
     float altitudinal_dirs_inv = 1.0 / altitudinal_dirs;
     float azimuthal_dirs = 4.0 * pow(2.0, cascade_index);
     float azimuthal_dirs_inv = 1.0 / azimuthal_dirs;
-    ivec2 probe_count = ivec2(floor(screen_res / c0_probe_spacing));
+    ivec2 probe_count = ivec2(floor(screen_res / probe_spacing));
     vec2 scale_bias = vec2(azimuthal_dirs_inv, altitudinal_dirs_inv);
 
     vec3 radiance = vec3(0.0);
