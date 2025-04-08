@@ -400,7 +400,7 @@ impl MicroGLUT for App {
 
         let scene = SceneFBO::init(gl, screen_width, screen_height);
 
-        let voxel_res = 300.0;
+        let voxel_res = 256.0;
         let voxel_origin = Vec3::new(0.0, 7.5, 0.0);
         let voxel_volume_side_lengths = Vec3::new(30.0, 15.0, 16.0);
         // Note: cracks in the voxelization may appear if all sides are not of the same length

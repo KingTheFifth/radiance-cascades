@@ -29,6 +29,10 @@ layout(std430) readonly buffer RCConstants {
     float c0_probe_spacing;
     float c0_interval_length;
     float normal_offset;    // Offset probe position along surface normals
+    float gamma;
+    float ambient_occlusion_factor;
+    float diffuse_intensity;
+    float ambient_occlusion;
 };
 
 layout(std430) readonly buffer HiZConstants {
@@ -216,11 +220,11 @@ bool trace_hi_z(vec3 ray_start, vec3 ray_end, inout float iters, out vec3 hit_po
 }
 
 vec3 linear_to_srgb(vec3 c) {
-    return pow(c.rgb, vec3(1.6));
+    return pow(c.rgb, vec3(1.0 / gamma));
 }
 
 vec3 srgb_to_linear(vec3 c) {
-    return pow(c.rgb, vec3(1.0 / 1.6));
+    return pow(c.rgb, vec3(gamma));
 }
 
 vec4 trace_radiance_hi_z(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
@@ -253,7 +257,7 @@ vec4 trace_radiance_naive_screen_space(vec3 ray_start_vs, vec3 ray_dir_vs, float
         vec2 min_max_depth = texelFetch(hi_z_tex, ivec2(ray_ss.xy), 0).xy;
         bool collides = (ray_ss.z >= min_max_depth.x && ray_ss.z <= min_max_depth.y);
         if (collides) {
-            return vec4(linear_to_srgb(texture(scene_emissive, ray_ss.xy * screen_res_inv).rgb), 0.0);
+            return vec4(srgb_to_linear(texture(scene_emissive, ray_ss.xy * screen_res_inv).rgb), 0.0);
         }
     }
     return MISS_COLOR;
@@ -270,7 +274,7 @@ vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
             return MISS_COLOR;
         }
         if (curr_sample.a > 0.05) {
-            return vec4(linear_to_srgb(curr_sample.rgb), 0.0);
+            return vec4(srgb_to_linear(curr_sample.rgb), 0.0);
         }
     }
     return MISS_COLOR;

@@ -17,6 +17,11 @@ layout(std430) readonly buffer RCConstants {
     float num_cascades;
     float c0_probe_spacing;
     float c0_interval_length;
+    float normal_offset;
+    float gamma;
+    float ambient_occlusion_factor;
+    float diffuse_intensity;
+    float ambient_occlusion;
 };
 
 layout(std430) readonly buffer SceneMatrices {
@@ -41,8 +46,12 @@ layout(std430) readonly buffer HiZConstants {
 
 const float altitudes[4] = {acos(-0.75), acos(-0.25), acos(0.25), acos(0.75)};
 
+vec3 linear_to_srgb(vec3 c) {
+    return pow(c.rgb, vec3(1.0 / gamma));
+}
+
 vec3 srgb_to_linear(vec3 c) {
-    return pow(c.rgb, vec3(1.0 / 1.6));
+    return pow(c.rgb, vec3(gamma));
 }
 
 vec3 octahedral_decode(vec2 v) {
@@ -131,7 +140,7 @@ void main() {
     ivec2 probe_count = ivec2(floor(screen_res / probe_spacing));
     vec2 scale_bias = vec2(azimuthal_dirs_inv, altitudinal_dirs_inv);
 
-    vec3 radiance = vec3(0.0);
+    vec4 radiance = vec4(0.0);
     float total_cone_weight = 0.0;
     for (float alt = 0.0; alt < altitudinal_dirs; alt += 1.0) {
         const float altitude = (alt + 0.5) * (3.14159265 * altitudinal_dirs_inv);
@@ -140,7 +149,7 @@ void main() {
 
         for (float azi = 0.0; azi < azimuthal_dirs; azi++) {
             const vec2 cone_coord = vec2(tex_coord * scale_bias + vec2(azi, alt) * scale_bias);
-            const vec3 cone_radiance = texture(cascade, cone_coord).rgb;
+            const vec4 cone_radiance = texture(cascade, cone_coord);
 
             const ivec2 dir_block_start = probe_count * ivec2(azi, alt);
             vec4 r = texelFetch(cascade, dir_block_start + probe_coords[0], 0) * probe_weights[0];
@@ -156,13 +165,25 @@ void main() {
             ));
 
             float cone_weight = max(0.0, dot(cone_direction, normal));
-            radiance += r.rgb * cone_weight;
+            radiance += r * cone_weight;
             total_cone_weight += cone_weight;
         }
     }
-    radiance = (total_cone_weight > 0.0) ? radiance / total_cone_weight : vec3(0.0);
+
+    radiance = (total_cone_weight > 0.0) ? radiance / total_cone_weight : vec4(0.0, 0.0, 0.0, 1.0);
+    radiance /= altitudinal_dirs * azimuthal_dirs;
+    radiance.a *= ambient_occlusion_factor;
 
     const vec4 albedo = texture(scene_albedo, tex_coord);
     const vec3 emissive = texture(scene_emissive, tex_coord).rgb;
-    color = vec4(srgb_to_linear(albedo.rgb * (radiance + ambient) + emissive), albedo.a);
+    vec3 diffuse = srgb_to_linear(albedo.rgb) * radiance.rgb * diffuse_intensity;
+    diffuse = clamp(diffuse, 0.0, 1.0);
+
+    vec3 direct = ambient + emissive;
+    direct = clamp(direct, 0.0, 1.0);
+    direct = (ambient_occlusion != 0.0) ? direct * radiance.a : direct;
+
+    vec3 out_color = diffuse + direct;
+    out_color = clamp(out_color, 0.0, 1.0);
+    color = vec4(linear_to_srgb(out_color), 1.0);
 }
