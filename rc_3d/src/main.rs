@@ -108,6 +108,7 @@ struct App {
     debug_mode: DebugMode,
 
     mouse_is_down: bool,
+    take_screenshot: bool,
     frame_times: VecDeque<f32>,
 }
 
@@ -140,7 +141,7 @@ impl App {
             gl.use_program(Some(self.scene_program));
             gl.enable(BLEND);
             gl.enable(DEPTH_TEST);
-            //gl.enable(CULL_FACE);
+            gl.disable(CULL_FACE);
             gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
 
             gl.viewport(
@@ -400,7 +401,7 @@ impl MicroGLUT for App {
 
         let scene = SceneFBO::init(gl, screen_width, screen_height);
 
-        let voxel_res = 256.0;
+        let voxel_res = 128.0;
         let voxel_origin = Vec3::new(0.0, 7.5, 0.0);
         let voxel_volume_side_lengths = Vec3::new(30.0, 15.0, 16.0);
         // Note: cracks in the voxelization may appear if all sides are not of the same length
@@ -412,14 +413,21 @@ impl MicroGLUT for App {
         );
         voxelizer.clear_voxels(gl, &quad_renderer, Vec4::new(0., 0., 0., 0.0));
 
-        let camera = Camera::new(
-            Vec3::new(0., 1., -1.),
-            Vec3::Z,
+        let camera_pos = Vec3::new(1.0, 2.0, 0.0);
+        let mut camera = Camera::new(
+            camera_pos,
+            Vec3::NEG_X,
             PI * 0.25,
             0.3,
             30.0,
             screen_width as f32 / screen_height as f32,
         );
+        camera.rotate(Quat::from_euler(
+            microglut::glam::EulerRot::YXZ,
+            180.0_f32.to_radians(),
+            (90.0_f32).to_radians(),
+            0.0,
+        ));
 
         let scene_matrices_binding = 0;
         let hi_z_constants_binding = 1;
@@ -533,7 +541,9 @@ impl MicroGLUT for App {
                 gl,
                 include_bytes!("../models/cube.obj"),
                 Some(&|_| tobj::load_mtl_buf(&mut &include_bytes!("../models/cube.mtl")[..])),
-                None,
+                Some(&|name| {
+                    load_bytes!(&format!("../textures/sponza_textures/{}", name)).to_vec()
+                }),
                 None,
                 true,
             );
@@ -590,7 +600,7 @@ impl MicroGLUT for App {
                     mesh.load_tangents(gl, &vase_tangents, &vase_bitangents);
                 }
             });
-            let sponza = Object::new(sponza_model);
+            let sponza = Object::new(sponza_model).with_uniform_scale(0.01);
 
             //let objects = vec![
             //    Object::new(rock.clone())
@@ -629,7 +639,9 @@ impl MicroGLUT for App {
                 //    .with_translation(Vec3::new(6.0, -0.2, -2.0)),
                 // cube.with_albedo(Vec4::new(1.0, 0.0, 0.0, 0.2))
                 // .with_scale(Vec3::new(15.0, 15.0, 8.0)),
-                sponza.with_uniform_scale(0.01),
+                cube.with_uniform_scale(0.2)
+                    .with_translation(Vec3::new(-1.0, 1.0, 0.0)),
+                sponza,
             ];
 
             App {
@@ -652,6 +664,7 @@ impl MicroGLUT for App {
                 quad_renderer,
                 camera,
                 radiance_cascades,
+                take_screenshot: false,
                 frame_times: VecDeque::new(),
             }
         }
@@ -659,6 +672,10 @@ impl MicroGLUT for App {
 
     fn display(&mut self, gl: &Context, window: &Window) {
         let t_start = elapsed_time();
+        self.objects[0] =
+            self.objects[0]
+                .clone()
+                .with_translation(Vec3::new(t_start.sin(), 1.0, t_start.cos()));
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.voxelizer
@@ -742,6 +759,13 @@ impl MicroGLUT for App {
             self.frame_times.rotate_left(self.frame_times.len() - 100);
             self.frame_times.truncate(100);
         }
+
+        if self.take_screenshot {
+            unsafe {
+                self.save_screen_to(gl);
+            }
+            self.take_screenshot = false;
+        }
         //println!("Time to render: {:?}", t_end - t_start);
     }
 
@@ -806,7 +830,8 @@ impl MicroGLUT for App {
         ui.checkbox("Enable debug mode", &mut self.debug);
 
         if ui.button("Save screenshot") {
-            self.save_screen_to(gl);
+            //self.save_screen_to(gl);
+            self.take_screenshot = true;
         }
 
         if let Some(cb) = ui.begin_combo("Debug mode", self.debug_mode.to_string()) {
