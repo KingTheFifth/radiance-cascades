@@ -171,7 +171,7 @@ void main() {
     }
 
     radiance = (total_cone_weight > 0.0) ? radiance / total_cone_weight : vec4(0.0, 0.0, 0.0, 1.0);
-    radiance /= altitudinal_dirs * azimuthal_dirs;
+    radiance /= altitudinal_dirs * azimuthal_dirs * 0.5;
     radiance.a *= ambient_occlusion_factor;
 
     const vec4 albedo = texture(scene_albedo, tex_coord);
@@ -179,7 +179,7 @@ void main() {
     vec3 diffuse = srgb_to_linear(albedo.rgb) * radiance.rgb * diffuse_intensity;
     diffuse = clamp(diffuse, 0.0, 1.0);
 
-    vec3 direct = ambient + emissive;
+    vec3 direct = ambient + srgb_to_linear(emissive);
     direct = clamp(direct, 0.0, 1.0);
     direct = (ambient_occlusion != 0.0) ? direct * radiance.a : direct;
 

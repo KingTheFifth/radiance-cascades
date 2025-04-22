@@ -421,15 +421,16 @@ void main() {
     const float interval_length = c0_interval_length;
     const float interval_start = c0_interval_length * cascade_index;
     #else
-    const float interval_length = c0_interval_length * pow(2.0, cascade_index);
-    const float interval_start = c0_interval_length * ((1.0 - pow(2.0, cascade_index)) / (1.0 - 2.0));
+    const float factor = 2.0;
+    const float interval_length = c0_interval_length * pow(factor, cascade_index);
+    const float interval_start = c0_interval_length * ((1.0 - pow(factor, cascade_index)) / (1.0 - factor));
     #endif
 
-    if (min_probe_pos_ss.z >= 0.99999) {
-        // Do not calculate probes placed in the sky/out of bounds
-        color = MISS_COLOR;
-        return;
-    }
+    //if (min_probe_pos_ss.z >= 0.99999) {
+    //    // Do not calculate probes placed in the sky/out of bounds
+    //    color = MISS_COLOR;
+    //    return;
+    //}
 
     const float ray_azimuth = (dir_block_index.x + 0.5) * (2.0 * 3.14169265 / (num_azimuthal_rays));
     const float ray_altitude = (dir_block_index.y + 0.5) * (3.14169265 / (num_altitudinal_rays));
