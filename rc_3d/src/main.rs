@@ -401,7 +401,7 @@ impl MicroGLUT for App {
 
         let scene = SceneFBO::init(gl, screen_width, screen_height);
 
-        let voxel_res = 128.0;
+        let voxel_res = 256.0;
         let voxel_origin = Vec3::new(0.0, 7.5, 0.0);
         let voxel_volume_side_lengths = Vec3::new(30.0, 15.0, 16.0);
         // Note: cracks in the voxelization may appear if all sides are not of the same length
@@ -436,7 +436,7 @@ impl MicroGLUT for App {
             gl,
             6.0,
             screen_resolution,
-            4.0,
+            2.0,
             rc_binding,
             scene_matrices_binding,
             hi_z_constants_binding,
@@ -639,9 +639,31 @@ impl MicroGLUT for App {
                 //    .with_translation(Vec3::new(6.0, -0.2, -2.0)),
                 // cube.with_albedo(Vec4::new(1.0, 0.0, 0.0, 0.2))
                 // .with_scale(Vec3::new(15.0, 15.0, 8.0)),
-                cube.with_uniform_scale(0.2)
-                    .with_translation(Vec3::new(-1.0, 1.0, 0.0)),
                 sponza,
+                // Lower floor -----------------------------------------------
+                // Lion floor cube
+                cube.clone().with_translation(Vec3::new(-11., 0.5, -0.1)),
+                // Mortar cube
+                cube.clone()
+                    .with_scale(Vec3::new(0.7, 0.45, 0.7))
+                    .with_translation(Vec3::new(11.2, 1.0, 4.04)),
+                // Banner cube
+                cube.clone()
+                    .with_scale(Vec3::new(0.7, 0.5, 0.7))
+                    .with_translation(Vec3::new(-4.5, 1.5, -2.25)),
+                // Middle cube
+                cube.clone()
+                    .with_uniform_scale(0.5)
+                    .with_translation(Vec3::new(3., 1., 0.)),
+                // Upper floor -----------------------------------------------
+                // Window cube
+                cube.clone().with_translation(Vec3::new(7.5, 5.6, 3.4)),
+                // Corner cube
+                cube.clone()
+                    .with_scale(Vec3::new(1., 0.45, 1.0))
+                    .with_translation(Vec3::new(11., 5., -4.)),
+                // Eeeh cube
+                cube.clone().with_translation(Vec3::new(-8., 5., -4.)),
             ];
 
             App {
@@ -672,10 +694,6 @@ impl MicroGLUT for App {
 
     fn display(&mut self, gl: &Context, window: &Window) {
         let t_start = elapsed_time();
-        self.objects[0] =
-            self.objects[0]
-                .clone()
-                .with_translation(Vec3::new(t_start.sin(), 1.0, t_start.cos()));
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.voxelizer
