@@ -142,12 +142,22 @@ void main() {
 
     vec4 radiance = vec4(0.0);
     float total_cone_weight = 0.0;
+    float cone_count = 0.0;
     for (float alt = 0.0; alt < altitudinal_dirs; alt += 1.0) {
         const float altitude = (alt + 0.5) * (3.14159265 * altitudinal_dirs_inv);
         const float cos_altitude = cos(altitude); 
         const float sin_altitude = sin(altitude); 
 
         for (float azi = 0.0; azi < azimuthal_dirs; azi++) {
+            const float azimuth = (azi + 0.5) * (2.0 * 3.14159265 * azimuthal_dirs_inv);
+            const vec3 cone_direction = normalize(vec3(
+                cos(azimuth) * sin_altitude,
+                cos_altitude,
+                sin(azimuth) * sin_altitude
+            ));
+
+            float cone_weight = max(0.0, dot(cone_direction, normal));
+
             const vec2 cone_coord = vec2(tex_coord * scale_bias + vec2(azi, alt) * scale_bias);
             const vec4 cone_radiance = texture(cascade, cone_coord);
 
@@ -157,21 +167,14 @@ void main() {
             r += texelFetch(cascade, dir_block_start + probe_coords[2], 0) * probe_weights[2];
             r += texelFetch(cascade, dir_block_start + probe_coords[3], 0) * probe_weights[3];
 
-            const float azimuth = (azi + 0.5) * (2.0 * 3.14159265 * azimuthal_dirs_inv);
-            const vec3 cone_direction = normalize(vec3(
-                cos(azimuth) * sin_altitude,
-                cos_altitude,
-                sin(azimuth) * sin_altitude
-            ));
-
-            float cone_weight = max(0.0, dot(cone_direction, normal));
+            cone_count += (cone_weight > 0.001) ? 1.0 : 0.0;
             radiance += r * cone_weight;
             total_cone_weight += cone_weight;
         }
     }
 
-    radiance = (total_cone_weight > 0.0) ? radiance / total_cone_weight : vec4(0.0, 0.0, 0.0, 1.0);
-    radiance /= altitudinal_dirs * azimuthal_dirs * 0.5;
+    //radiance = (total_cone_weight > 0.0) ? radiance / total_cone_weight : vec4(0.0, 0.0, 0.0, 1.0);
+    radiance = (cone_count > 0.0) ? radiance / cone_count : vec4(0.0, 0.0, 0.0, 1.0);
     radiance.a *= ambient_occlusion_factor;
 
     const vec4 albedo = texture(scene_albedo, tex_coord);
