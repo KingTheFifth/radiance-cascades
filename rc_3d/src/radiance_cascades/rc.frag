@@ -58,6 +58,7 @@ layout(std430) readonly buffer SceneMatrices {
 uniform float step_count;
 uniform mat4 world_to_voxel;
 uniform vec3 voxel_resolution;
+uniform vec3 voxel_size;
 layout(binding = 0, rgba16f) uniform readonly image3D voxel_tex;
 
 const float DIR_EPS_X = 0.001;
@@ -440,20 +441,22 @@ void main() {
         cos(ray_altitude),
         sin(ray_azimuth)*sin(ray_altitude)
     ));
-    const vec3 ray_dir_vs = normalize(mat3(world_to_view) * ray_dir_ws);
 
     // TODO: Trace both min and max depth probes at the same time somehow
-    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start + normal_ws * normal_offset;
-    const vec3 ray_start_vs = min_probe_pos_vs + ray_dir_vs * interval_start + normal_vs * normal_offset;
-    // const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start;
-    // const vec3 ray_start_vs = min_probe_pos_vs + ray_dir_vs * interval_start;
 
     #if (TRACE_METHOD == NAIVE_SS)
+    const vec3 ray_dir_vs = normalize(mat3(world_to_view) * ray_dir_ws);
+    const vec3 ray_start_vs = min_probe_pos_vs + ray_dir_vs * interval_start + normal_vs * normal_offset;
     vec4 radiance_min = trace_radiance_naive_screen_space(ray_start_vs, ray_dir_vs, interval_length);
+
     #elif (TRACE_METHOD == HI_Z)
     vec4 radiance_min = trace_radiance_hi_z(ray_start_vs, ray_dir_vs, interval_length);
+
     #elif (TRACE_METHOD == VOXEL)
+    const vec3 offset = normal_ws * voxel_size * normal_offset;
+    const vec3 ray_start_ws = min_probe_pos_ws + ray_dir_ws * interval_start + offset;
     vec4 radiance_min = trace_radiance_voxel(ray_start_ws, ray_dir_ws, interval_length);
+
     #else
     #error "Invalid tracing method"
     #endif

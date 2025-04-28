@@ -142,6 +142,10 @@ impl Voxelizer {
         self.resolution
     }
 
+    pub fn voxel_size(&self) -> Vec3 {
+        self.volume_side_lengths / self.resolution
+    }
+
     pub fn world_to_voxel(&self) -> Mat4 {
         let half_side_lengths = self.volume_side_lengths * 0.5;
         let projection = Mat4::orthographic_rh(

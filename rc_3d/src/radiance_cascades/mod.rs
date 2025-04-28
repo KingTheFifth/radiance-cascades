@@ -299,6 +299,11 @@ impl RadianceCascades {
                     .as_ref(),
                 voxelizer.resolution().as_ref(),
             );
+            gl.uniform_3_f32_slice(
+                gl.get_uniform_location(self.cascade_program, "voxel_size")
+                    .as_ref(),
+                voxelizer.voxel_size().as_ref(),
+            );
 
             for n in (0..self.constants.cascade_count as i32).rev() {
                 gl.uniform_1_f32(
@@ -533,7 +538,7 @@ impl RadianceCascades {
                 );
 
             constants_changed = constants_changed
-                || ui.slider("Normal offset", 0.0, 1.0, &mut self.constants.normal_offset);
+                || ui.slider("Normal offset", 0.0, 4.0, &mut self.constants.normal_offset);
 
             ui.slider("Ambient level", 0.0, 1.0, &mut self.ambient_level);
         }
