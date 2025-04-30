@@ -1,16 +1,16 @@
 #[macro_use]
 extern crate load_file;
 
-use std::{collections::VecDeque, f32::consts::PI, ffi::CStr};
+use std::{collections::VecDeque, f32::consts::PI};
 
 use bytemuck::{Pod, Zeroable};
 use camera::Camera;
 use microglut::{
     delta_time, elapsed_time,
-    glam::{Mat4, Quat, Vec2, Vec3, Vec4},
+    glam::{Mat4, Vec2, Vec3, Vec4},
     glow::{
         Context, HasContext, NativeBuffer, NativeProgram, PixelPackData, BLEND, COLOR_ATTACHMENT0,
-        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEBUG_OUTPUT, DEPTH_BUFFER_BIT, DEPTH_TEST,
+        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEPTH_BUFFER_BIT, DEPTH_TEST,
         DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
         RGBA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2,
         TEXTURE_2D, TEXTURE_MAX_LEVEL, UNSIGNED_BYTE,
@@ -20,7 +20,7 @@ use microglut::{
         keyboard::{Keycode, Mod, Scancode},
         mouse::MouseButton,
     },
-    MaterialBindings, MicroGLUT, Model, Texture, Window,
+    MaterialBindings, MicroGLUT, Model, Window,
 };
 use object::Object;
 use quad_renderer::QuadRenderer;
@@ -414,20 +414,15 @@ impl MicroGLUT for App {
         voxelizer.clear_voxels(gl, &quad_renderer, Vec4::new(0., 0., 0., 0.0));
 
         let camera_pos = Vec3::new(1.0, 2.0, 0.0);
-        let mut camera = Camera::new(
+        let camera = Camera::new(
             camera_pos,
-            Vec3::NEG_X,
+            0.0_f32.to_radians(),
+            0.0_f32.to_radians(),
             PI * 0.25,
             0.3,
             30.0,
             screen_width as f32 / screen_height as f32,
         );
-        camera.rotate(Quat::from_euler(
-            microglut::glam::EulerRot::YXZ,
-            180.0_f32.to_radians(),
-            (90.0_f32).to_radians(),
-            0.0,
-        ));
 
         let scene_matrices_binding = 0;
         let hi_z_constants_binding = 1;
@@ -666,6 +661,12 @@ impl MicroGLUT for App {
                 cube.clone().with_translation(Vec3::new(-8., 5., -4.)),
             ];
 
+            // Scene positions (pos, rotation):
+            // Pot: (11.0, 1.5, -1.5), (5.0, 90.0)
+            // Light leak corridor: (5.5, 1.5, -5.5), (-4.6, -186.0)
+            // Window: (3.4, 6.6, 5.0), (-6.4, -40.0)
+            // Two floors: (-4.5, 1.25, -0.5), (10.7, 2.0)
+
             App {
                 scene_program,
                 depth_program,
@@ -795,23 +796,23 @@ impl MicroGLUT for App {
         repeat: bool,
     ) {
         if let Some(kc) = keycode {
-            let cam_right = self.camera.right();
-            let direction = match kc {
-                Keycode::W => self.camera.look_direction,
-                Keycode::S => -self.camera.look_direction,
-                Keycode::A => -cam_right,
-                Keycode::D => cam_right,
+            let amount = delta_time() * self.camera.walk_speed;
+            match kc {
+                Keycode::W => self.camera.walk_forward(amount),
+                Keycode::S => self.camera.walk_forward(-amount),
+                Keycode::A => self.camera.strafe(-amount),
+                Keycode::D => self.camera.strafe(amount),
                 Keycode::SPACE => {
                     if keymod == Mod::LSHIFTMOD {
-                        -Vec3::Y
+                        self.camera.fly(-amount);
                     } else {
-                        Vec3::Y
+                        self.camera.fly(amount);
                     }
                 }
-                _ => Vec3::ZERO,
+                Keycode::E => self.camera.fly(amount),
+                Keycode::Q => self.camera.fly(-amount),
+                _ => {}
             };
-            self.camera
-                .move_by(direction * delta_time() * self.camera.walk_speed);
         }
     }
 
@@ -836,10 +837,10 @@ impl MicroGLUT for App {
     fn mouse_moved_rel(&mut self, xrel: i32, yrel: i32) {
         if self.mouse_is_down {
             let speed = self.camera.rotational_speed;
-            let rotation = (Quat::from_rotation_y(speed * -xrel as f32 / self.screen_resolution.x)
-                * Quat::from_rotation_x(speed * yrel as f32 / self.screen_resolution.y))
-            .normalize();
-            self.camera.rotate(rotation);
+            let change_yaw = speed * xrel as f32 / self.screen_resolution.x;
+            let change_pitch = speed * -yrel as f32 / self.screen_resolution.y;
+            self.camera.add_yaw(change_yaw);
+            self.camera.add_pitch(change_pitch);
         }
     }
 
