@@ -63,6 +63,10 @@ impl Camera {
         Mat4::perspective_rh(self.fov, self.aspect_ratio, self.near, self.far)
     }
 
+    pub fn set_position(&mut self, position: Vec3) {
+        self.position = position;
+    }
+
     pub fn move_by(&mut self, relative_position: Vec3) {
         self.position += relative_position;
     }

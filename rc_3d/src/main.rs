@@ -1,7 +1,10 @@
 #[macro_use]
 extern crate load_file;
 
-use std::{collections::VecDeque, f32::consts::PI};
+use std::{
+    collections::{btree_map::Range, VecDeque},
+    f32::consts::PI,
+};
 
 use bytemuck::{Pod, Zeroable};
 use camera::Camera;
@@ -110,6 +113,9 @@ struct App {
     mouse_is_down: bool,
     take_screenshot: bool,
     frame_times: VecDeque<f32>,
+
+    locations: Vec<(String, Vec3, Vec2)>, // Name, position, Euler angles (no roll)
+    location: usize,
 }
 
 impl App {
@@ -387,6 +393,14 @@ impl App {
             .unwrap();
         }
     }
+
+    fn set_location(&mut self, location: usize) {
+        self.location = location;
+        let (_, position, angles) = self.locations[location];
+        self.camera.set_position(position);
+        self.camera.set_pitch(angles.x.to_radians());
+        self.camera.set_yaw(angles.y.to_radians());
+    }
 }
 
 impl MicroGLUT for App {
@@ -662,11 +676,28 @@ impl MicroGLUT for App {
                 cube.clone().with_translation(Vec3::new(-8., 5., -4.)),
             ];
 
-            // Scene positions (pos, rotation):
-            // Pot: (11.0, 1.5, -1.5), (5.0, 90.0)
-            // Light leak corridor: (5.5, 1.5, -5.5), (-4.6, -186.0)
-            // Window: (3.4, 6.6, 5.0), (-6.4, -40.0)
-            // Two floors: (-4.5, 1.25, -0.5), (10.7, 2.0)
+            let locations = vec![
+                (
+                    "Pot".to_string(),
+                    Vec3::new(11.0, 1.5, -1.5),
+                    Vec2::new(5.0, 90.0),
+                ),
+                (
+                    "Corridor".to_string(),
+                    Vec3::new(5.5, 1.5, -5.5),
+                    Vec2::new(-4.6, -186.0),
+                ),
+                (
+                    "Window".to_string(),
+                    Vec3::new(3.4, 6.6, 5.0),
+                    Vec2::new(-6.4, -40.0),
+                ),
+                (
+                    "Two floors".to_string(),
+                    Vec3::new(-4.5, 1.25, -0.5),
+                    Vec2::new(10.7, 2.0),
+                ),
+            ];
 
             App {
                 scene_program,
@@ -690,6 +721,8 @@ impl MicroGLUT for App {
                 radiance_cascades,
                 take_screenshot: false,
                 frame_times: VecDeque::new(),
+                locations,
+                location: 0,
             }
         }
     }
@@ -844,6 +877,27 @@ impl MicroGLUT for App {
     fn ui(&mut self, gl: &Context, ui: &mut imgui::Ui) {
         let mut constants_changed = false;
         ui.checkbox("Enable debug mode", &mut self.debug);
+
+        let curr_location = self.location;
+        if let Some(cb) = ui.begin_combo("Location", &self.locations[curr_location].0) {
+            for l in (0..self.locations.len()) {
+                if curr_location == l {
+                    ui.set_item_default_focus();
+                }
+
+                let label = &self.locations[l].0;
+                let clicked = ui
+                    .selectable_config(label)
+                    .selected(curr_location == l)
+                    .build();
+
+                if clicked {
+                    self.set_location(l);
+                }
+            }
+
+            cb.end();
+        }
 
         if ui.button("Save screenshot") {
             //self.save_screen_to(gl);
