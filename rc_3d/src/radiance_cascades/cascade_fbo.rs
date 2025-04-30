@@ -8,8 +8,9 @@ use microglut::{
 };
 
 pub struct CascadeFBO {
-    pub fb: NativeFramebuffer,
-    pub cascades: Vec<NativeTexture>,
+    fb: NativeFramebuffer,
+    cascades: Vec<NativeTexture>,
+    is_valid: bool,
 }
 
 impl CascadeFBO {
@@ -20,7 +21,7 @@ impl CascadeFBO {
 
             let cascades = (0..num_cascades)
                 .into_iter()
-                .map(|i| {
+                .map(|_| {
                     let tex = gl.create_texture().unwrap();
                     gl.bind_texture(TEXTURE_2D, Some(tex));
                     gl.tex_parameter_i32(TEXTURE_2D, TEXTURE_WRAP_S, CLAMP_TO_EDGE as _);
@@ -45,11 +46,37 @@ impl CascadeFBO {
             gl.draw_buffers(&[COLOR_ATTACHMENT0]);
             gl.bind_framebuffer(FRAMEBUFFER, None);
             gl.bind_texture(TEXTURE_2D, None);
-            CascadeFBO { fb, cascades }
+            CascadeFBO {
+                fb,
+                cascades,
+                is_valid: true,
+            }
         }
     }
 
+    pub fn delete_resources(&mut self, gl: &Context) {
+        unsafe {
+            for texture in &self.cascades {
+                gl.delete_texture(*texture);
+            }
+            gl.delete_framebuffer(self.fb);
+            self.cascades.clear();
+            self.is_valid = false;
+        }
+    }
+
+    pub fn get_fbo(&self) -> NativeFramebuffer {
+        assert!(self.is_valid);
+        self.fb
+    }
+
+    pub fn get_cascade(&self, cascade: usize) -> NativeTexture {
+        assert!(self.is_valid);
+        self.cascades[cascade]
+    }
+
     pub fn bind_cascade_as_texture(&self, gl: &Context, cascade: usize, texture_unit: u32) {
+        assert!(self.is_valid);
         unsafe {
             gl.active_texture(texture_unit);
             gl.bind_texture(TEXTURE_2D, Some(self.cascades[cascade]));
@@ -57,6 +84,7 @@ impl CascadeFBO {
     }
 
     pub fn bind_cascade_as_output(&self, gl: &Context, cascade: usize) {
+        assert!(self.is_valid);
         unsafe {
             gl.bind_framebuffer(FRAMEBUFFER, Some(self.fb));
             gl.framebuffer_texture(

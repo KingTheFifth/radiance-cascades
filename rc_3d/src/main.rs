@@ -432,6 +432,7 @@ impl MicroGLUT for App {
             6.0,
             screen_resolution,
             2.0,
+            0.2,
             rc_binding,
             scene_matrices_binding,
             hi_z_constants_binding,
@@ -706,12 +707,8 @@ impl MicroGLUT for App {
                     self.draw_ssrt(gl);
                 }
                 DebugMode::RadianceCascades => {
-                    self.radiance_cascades.render_debug(
-                        gl,
-                        self.screen_resolution,
-                        &self.scene,
-                        &self.voxelizer,
-                    );
+                    self.radiance_cascades
+                        .render_debug(gl, &self.scene, &self.voxelizer);
                 }
                 DebugMode::DepthBuffer => unsafe {
                     gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.scene.fb));
@@ -770,7 +767,7 @@ impl MicroGLUT for App {
             }
         } else {
             self.radiance_cascades
-                .render(gl, self.screen_resolution, &self.scene, &self.voxelizer);
+                .render(gl, &self.scene, &self.voxelizer);
         }
         let t_end = elapsed_time();
         self.frame_times.push_back(t_end - t_start);

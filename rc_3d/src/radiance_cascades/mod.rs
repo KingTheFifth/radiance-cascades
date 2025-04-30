@@ -28,7 +28,7 @@ fn ceil_to_power_of_n(number: f32, n: f32) -> f32 {
     n.powf(number.log(n).ceil())
 }
 
-/// Rounds up a numver to a multiple of n.
+/// Rounds up a number to a multiple of n.
 /// # Examples
 /// ```
 /// let x = 5.0;
@@ -70,7 +70,10 @@ pub struct RadianceCascades {
 
     constants: RadianceCascadesConstants,
     constants_ssbo: NativeBuffer,
+    scene_matrices_binding: u32,
+    hi_z_constants_binding: u32,
     constants_ssbo_binding: u32,
+    screen_resolution: Vec2,
     ambient_level: f32,
 
     // Debug info
@@ -105,13 +108,13 @@ impl RadianceCascades {
         cascade_count: f32,
         screen_resolution: Vec2,
         probe_spacing: f32,
+        interval_length: f32,
         binding_point: u32,
         scene_matrices_binding: u32,
         hi_z_constants_binding: u32,
     ) -> Self {
-        let interval_length = Vec2::ZERO.distance(Vec2::new(probe_spacing, probe_spacing)) * 0.5;
         let probe_spacing_adjusted = ceil_to_power_of_n(probe_spacing, 2.0);
-        let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
+        //let interval_length_adjusted = ceil_to_multiple_of_n(interval_length, 2.0);
         let cascade_width = 4.0 * screen_resolution.x / probe_spacing_adjusted;
         let cascade_height = 4.0 * screen_resolution.y / probe_spacing_adjusted;
         let c0_resolution = Vec2::new(cascade_width, cascade_height);
@@ -129,85 +132,22 @@ impl RadianceCascades {
         let quad_renderer = QuadRenderer::new(gl);
 
         let constants = RadianceCascadesConstants {
-            c0_interval_length: interval_length_adjusted,
+            c0_interval_length: interval_length,
             c0_probe_spacing: probe_spacing_adjusted,
             c0_resolution,
             cascade_count,
-            normal_offset: 0.1,
+            normal_offset: 2.5,
             ambient_occlusion_factor: 2.0,
             gamma: 1.0,
             diffuse_intensity: 15.0,
-            ambient_occlusion: 1.0,
+            ambient_occlusion: 0.0,
             _padding: [0.0, 0.0],
         };
         let constants_ssbo_binding = binding_point;
         let constants_ssbo = constants.create_shader_storage_buffer(gl, constants_ssbo_binding);
         constants.upload_to_buffer(gl, constants_ssbo);
 
-        unsafe {
-            let mut hi_z_constants_ssbo_loc = gl
-                .get_shader_storage_block_index(cascade_program, "HiZConstants")
-                .unwrap();
-            gl.shader_storage_block_binding(
-                cascade_program,
-                hi_z_constants_ssbo_loc,
-                hi_z_constants_binding,
-            );
-
-            let mut scene_matrices_ssbo_loc = gl
-                .get_shader_storage_block_index(cascade_program, "SceneMatrices")
-                .unwrap();
-            gl.shader_storage_block_binding(
-                cascade_program,
-                scene_matrices_ssbo_loc,
-                scene_matrices_binding,
-            );
-
-            let mut constants_ssbo_loc = gl
-                .get_shader_storage_block_index(cascade_program, "RCConstants")
-                .unwrap();
-            gl.shader_storage_block_binding(
-                cascade_program,
-                constants_ssbo_loc,
-                constants_ssbo_binding,
-            );
-
-            hi_z_constants_ssbo_loc = gl
-                .get_shader_storage_block_index(integration_program, "HiZConstants")
-                .unwrap();
-            gl.shader_storage_block_binding(
-                integration_program,
-                hi_z_constants_ssbo_loc,
-                hi_z_constants_binding,
-            );
-            constants_ssbo_loc = gl
-                .get_shader_storage_block_index(integration_program, "RCConstants")
-                .unwrap();
-            gl.shader_storage_block_binding(
-                integration_program,
-                constants_ssbo_loc,
-                constants_ssbo_binding,
-            );
-            scene_matrices_ssbo_loc = gl
-                .get_shader_storage_block_index(integration_program, "SceneMatrices")
-                .unwrap();
-            gl.shader_storage_block_binding(
-                integration_program,
-                scene_matrices_ssbo_loc,
-                scene_matrices_binding,
-            );
-
-            hi_z_constants_ssbo_loc = gl
-                .get_shader_storage_block_index(upscale_program, "HiZConstants")
-                .unwrap();
-            gl.shader_storage_block_binding(
-                upscale_program,
-                hi_z_constants_ssbo_loc,
-                hi_z_constants_binding,
-            );
-        }
-
-        Self {
+        let rc = Self {
             cascade_program,
             integration_program,
             upscale_program,
@@ -215,24 +155,104 @@ impl RadianceCascades {
             quad_renderer,
             constants,
             constants_ssbo,
+            scene_matrices_binding,
+            hi_z_constants_binding,
             constants_ssbo_binding,
             merge_cascades: true,
             debug_cascade_index: 0,
-            ambient_level: 0.1,
+            screen_resolution,
+            ambient_level: 0.0,
             debug_mode: DebugModes::Cascades,
+        };
+        rc.upload_constants(gl);
+        rc
+    }
+
+    fn upload_constants(&self, gl: &Context) {
+        unsafe {
+            let mut hi_z_constants_ssbo_loc = gl
+                .get_shader_storage_block_index(self.cascade_program, "HiZConstants")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                self.cascade_program,
+                hi_z_constants_ssbo_loc,
+                self.hi_z_constants_binding,
+            );
+
+            let mut scene_matrices_ssbo_loc = gl
+                .get_shader_storage_block_index(self.cascade_program, "SceneMatrices")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                self.cascade_program,
+                scene_matrices_ssbo_loc,
+                self.scene_matrices_binding,
+            );
+
+            let mut constants_ssbo_loc = gl
+                .get_shader_storage_block_index(self.cascade_program, "RCConstants")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                self.cascade_program,
+                constants_ssbo_loc,
+                self.constants_ssbo_binding,
+            );
+
+            hi_z_constants_ssbo_loc = gl
+                .get_shader_storage_block_index(self.integration_program, "HiZConstants")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                self.integration_program,
+                hi_z_constants_ssbo_loc,
+                self.hi_z_constants_binding,
+            );
+            constants_ssbo_loc = gl
+                .get_shader_storage_block_index(self.integration_program, "RCConstants")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                self.integration_program,
+                constants_ssbo_loc,
+                self.constants_ssbo_binding,
+            );
+            scene_matrices_ssbo_loc = gl
+                .get_shader_storage_block_index(self.integration_program, "SceneMatrices")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                self.integration_program,
+                scene_matrices_ssbo_loc,
+                self.scene_matrices_binding,
+            );
+
+            hi_z_constants_ssbo_loc = gl
+                .get_shader_storage_block_index(self.upscale_program, "HiZConstants")
+                .unwrap();
+            gl.shader_storage_block_binding(
+                self.upscale_program,
+                hi_z_constants_ssbo_loc,
+                self.hi_z_constants_binding,
+            );
         }
     }
 
-    fn calculate_cascades(
-        &mut self,
-        gl: &Context,
-        screen_resolution: Vec2,
-        scene: &SceneFBO,
-        voxelizer: &Voxelizer,
-    ) {
+    fn update_fbo_parameters(&mut self, gl: &Context) {
+        let probe_spacing_adjusted = ceil_to_power_of_n(self.constants.c0_probe_spacing, 2.0);
+        let cascade_width = 4.0 * self.screen_resolution.x / probe_spacing_adjusted;
+        let cascade_height = 4.0 * self.screen_resolution.y / probe_spacing_adjusted;
+        let c0_resolution = Vec2::new(cascade_width, cascade_height);
+
+        // Upload changed parameters to the GPU
+        self.constants.c0_probe_spacing = probe_spacing_adjusted;
+        self.constants.c0_resolution = c0_resolution;
+        self.constants.upload_to_buffer(gl, self.constants_ssbo);
+
+        // Generate a new fbo with the updated parameters
+        self.cascades.delete_resources(gl);
+        self.cascades = CascadeFBO::new(gl, c0_resolution, self.constants.cascade_count as _);
+    }
+
+    fn calculate_cascades(&mut self, gl: &Context, scene: &SceneFBO, voxelizer: &Voxelizer) {
         unsafe {
             gl.use_program(Some(self.cascade_program));
-            gl.bind_framebuffer(FRAMEBUFFER, Some(self.cascades.fb));
+            gl.bind_framebuffer(FRAMEBUFFER, Some(self.cascades.get_fbo()));
             gl.active_texture(TEXTURE1);
             gl.bind_texture(TEXTURE_2D, Some(scene.albedo));
             gl.active_texture(TEXTURE2);
@@ -332,18 +352,17 @@ impl RadianceCascades {
                     .draw_screen_quad(gl, self.cascade_program);
             }
 
-            gl.viewport(0, 0, screen_resolution.x as _, screen_resolution.y as _);
+            gl.viewport(
+                0,
+                0,
+                self.screen_resolution.x as _,
+                self.screen_resolution.y as _,
+            );
             gl.bind_framebuffer(FRAMEBUFFER, None);
         }
     }
 
-    fn integrate_radiance(
-        &self,
-        gl: &Context,
-        cascade_index: usize,
-        screen_resolution: Vec2,
-        scene: &SceneFBO,
-    ) {
+    fn integrate_radiance(&self, gl: &Context, cascade_index: usize, scene: &SceneFBO) {
         unsafe {
             gl.use_program(Some(self.integration_program));
             gl.uniform_1_i32(
@@ -393,35 +412,34 @@ impl RadianceCascades {
             gl.active_texture(TEXTURE4);
             gl.bind_texture(TEXTURE4, Some(scene.hi_z_texture));
 
-            gl.viewport(0, 0, screen_resolution.x as _, screen_resolution.y as _);
+            gl.viewport(
+                0,
+                0,
+                self.screen_resolution.x as _,
+                self.screen_resolution.y as _,
+            );
             gl.clear(COLOR_BUFFER_BIT);
             self.quad_renderer
                 .draw_screen_quad(gl, self.integration_program);
         }
     }
 
-    pub fn render_debug(
-        &mut self,
-        gl: &Context,
-        screen_resolution: Vec2,
-        scene: &SceneFBO,
-        voxelizer: &Voxelizer,
-    ) {
-        let screen_width = screen_resolution.x as i32;
-        let screen_height = screen_resolution.y as i32;
+    pub fn render_debug(&mut self, gl: &Context, scene: &SceneFBO, voxelizer: &Voxelizer) {
+        let screen_width = self.screen_resolution.x as i32;
+        let screen_height = self.screen_resolution.y as i32;
         match self.debug_mode {
             DebugModes::Cascades => {
-                self.calculate_cascades(gl, screen_resolution, scene, voxelizer);
+                self.calculate_cascades(gl, scene, voxelizer);
 
                 let cascade_width = self.constants.c0_resolution.x as i32;
                 let cascade_height = self.constants.c0_resolution.y as i32;
                 unsafe {
-                    gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.cascades.fb));
+                    gl.bind_framebuffer(READ_FRAMEBUFFER, Some(self.cascades.get_fbo()));
                     gl.read_buffer(COLOR_ATTACHMENT0);
                     gl.framebuffer_texture(
                         READ_FRAMEBUFFER,
                         COLOR_ATTACHMENT0,
-                        Some(self.cascades.cascades[self.debug_cascade_index]),
+                        Some(self.cascades.get_cascade(self.debug_cascade_index)),
                         0,
                     );
                     gl.viewport(0, 0, screen_width, screen_height);
@@ -477,18 +495,13 @@ impl RadianceCascades {
         }
     }
 
-    pub fn render(
-        &mut self,
-        gl: &Context,
-        screen_resolution: Vec2,
-        scene: &SceneFBO,
-        voxelizer: &Voxelizer,
-    ) {
-        self.calculate_cascades(gl, screen_resolution, scene, voxelizer);
-        self.integrate_radiance(gl, self.debug_cascade_index, screen_resolution, scene);
+    pub fn render(&mut self, gl: &Context, scene: &SceneFBO, voxelizer: &Voxelizer) {
+        self.calculate_cascades(gl, scene, voxelizer);
+        self.integrate_radiance(gl, self.debug_cascade_index, scene);
     }
 
     pub fn ui(&mut self, gl: &Context, ui: &imgui::Ui) {
+        let mut regenerate_fbo = false;
         let mut constants_changed = false;
         let mut ao = self.constants.ambient_occlusion != 0.0;
         if ui.tree_node("Radiance cascades").is_some() {
@@ -523,6 +536,10 @@ impl RadianceCascades {
                 cb.end();
             }
 
+            regenerate_fbo = ui
+                .input_scalar("Probe spacing", &mut self.constants.c0_probe_spacing)
+                .build();
+
             ui.input_scalar("Cascade index", &mut self.debug_cascade_index)
                 .build();
 
@@ -547,6 +564,10 @@ impl RadianceCascades {
 
         if constants_changed {
             self.constants.upload_to_buffer(gl, self.constants_ssbo);
+        }
+
+        if regenerate_fbo {
+            self.update_fbo_parameters(gl);
         }
     }
 }
