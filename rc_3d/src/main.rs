@@ -1,22 +1,19 @@
 #[macro_use]
 extern crate load_file;
 
-use std::{
-    collections::{btree_map::Range, VecDeque},
-    f32::consts::PI,
-};
+use std::{collections::VecDeque, f32::consts::PI};
 
 use bytemuck::{Pod, Zeroable};
 use camera::Camera;
 use microglut::{
-    delta_time, elapsed_time,
+    delta_time,
     glam::{Mat4, Vec2, Vec3, Vec4},
     glow::{
-        Context, HasContext, NativeBuffer, NativeProgram, PixelPackData, BLEND, COLOR_ATTACHMENT0,
-        COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEPTH_BUFFER_BIT, DEPTH_TEST,
-        DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA, READ_FRAMEBUFFER,
-        RGBA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW, TEXTURE0, TEXTURE1, TEXTURE2,
-        TEXTURE_2D, TEXTURE_MAX_LEVEL, UNSIGNED_BYTE,
+        Context, HasContext, NativeBuffer, NativeProgram, NativeQuery, PixelPackData, BLEND,
+        COLOR_ATTACHMENT0, COLOR_ATTACHMENT3, COLOR_BUFFER_BIT, CULL_FACE, DEPTH_BUFFER_BIT,
+        DEPTH_TEST, DRAW_FRAMEBUFFER, FRAMEBUFFER, LINEAR, MULTISAMPLE, ONE_MINUS_SRC_ALPHA,
+        QUERY_RESULT, READ_FRAMEBUFFER, RGBA, SHADER_STORAGE_BUFFER, SRC_ALPHA, STATIC_DRAW,
+        TEXTURE0, TEXTURE1, TEXTURE2, TEXTURE_2D, TEXTURE_MAX_LEVEL, TIME_ELAPSED, UNSIGNED_BYTE,
     },
     imgui, load_shaders, load_tangent_buf,
     sdl2::{
@@ -116,6 +113,9 @@ struct App {
 
     locations: Vec<(String, Vec3, Vec2)>, // Name, position, Euler angles (no roll)
     location: usize,
+
+    queries: (NativeQuery, NativeQuery),
+    query: i32,
 }
 
 impl App {
@@ -699,6 +699,10 @@ impl MicroGLUT for App {
                 ),
             ];
 
+            let queries = (gl.create_query().unwrap(), gl.create_query().unwrap());
+            gl.begin_query(TIME_ELAPSED, queries.1);
+            gl.end_query(TIME_ELAPSED);
+
             App {
                 scene_program,
                 depth_program,
@@ -723,17 +727,35 @@ impl MicroGLUT for App {
                 frame_times: VecDeque::new(),
                 locations,
                 location: 0,
+                queries,
+                query: 0,
             }
         }
     }
 
     fn display(&mut self, gl: &Context, window: &Window) {
-        let t_start = elapsed_time();
+        // Choose query for measureing render time
+        let query = if self.query == 0 {
+            self.queries.0
+        } else {
+            self.queries.1
+        };
+        let ready_query = if self.query != 0 {
+            self.queries.0
+        } else {
+            self.queries.1
+        };
+
+        // Begin time measure
+        unsafe {
+            gl.begin_query(TIME_ELAPSED, query);
+        }
         self.draw_scene(gl);
         self.generate_hi_z_buffer(gl);
         self.voxelizer
             .clear_voxels(gl, &self.quad_renderer, Vec4::new(0.0, 0.0, 0.0, 0.0));
         self.voxelizer.voxelize(gl, &self.objects);
+
         if self.debug {
             match self.debug_mode {
                 DebugMode::RayMarching => {
@@ -802,12 +824,23 @@ impl MicroGLUT for App {
             self.radiance_cascades
                 .render(gl, &self.scene, &self.voxelizer);
         }
-        let t_end = elapsed_time();
-        self.frame_times.push_back(t_end - t_start);
+
+        // End time measure
+        unsafe {
+            gl.end_query(TIME_ELAPSED);
+        }
+
+        // Query and save render time
+        let frame_time = unsafe { gl.get_query_parameter_u32(ready_query, QUERY_RESULT) };
+        self.frame_times
+            .push_back(frame_time as f32 / 1000000.0_f32);
         if self.frame_times.len() > 100 {
             self.frame_times.rotate_left(self.frame_times.len() - 100);
             self.frame_times.truncate(100);
         }
+
+        // Backbuffer queries
+        self.query = (self.query + 1) % 2;
 
         if self.take_screenshot {
             unsafe {
@@ -951,7 +984,7 @@ impl MicroGLUT for App {
             }
         }
 
-        let fps = self.frame_times.len() as f32 / self.frame_times.iter().sum::<f32>();
+        let fps = self.frame_times.len() as f32 / self.frame_times.iter().sum::<f32>() * 1000.0;
         ui.plot_lines("Frame times", self.frame_times.make_contiguous())
             .overlay_text(format!("FPS {}", fps))
             .build();
