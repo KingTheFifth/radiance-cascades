@@ -136,10 +136,10 @@ impl RadianceCascades {
             c0_probe_spacing: probe_spacing_adjusted,
             c0_resolution,
             cascade_count,
-            normal_offset: 2.5,
+            normal_offset: 0.025,
             ambient_occlusion_factor: 2.0,
             gamma: 1.0,
-            diffuse_intensity: 15.0,
+            diffuse_intensity: 30.0,
             ambient_occlusion: 0.0,
             _padding: [0.0, 0.0],
         };
@@ -164,11 +164,11 @@ impl RadianceCascades {
             ambient_level: 0.0,
             debug_mode: DebugModes::Cascades,
         };
-        rc.upload_constants(gl);
+        rc.bind_constant_buffers(gl);
         rc
     }
 
-    fn upload_constants(&self, gl: &Context) {
+    fn bind_constant_buffers(&self, gl: &Context) {
         unsafe {
             let mut hi_z_constants_ssbo_loc = gl
                 .get_shader_storage_block_index(self.cascade_program, "HiZConstants")

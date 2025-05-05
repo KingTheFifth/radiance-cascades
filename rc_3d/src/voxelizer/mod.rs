@@ -132,7 +132,7 @@ impl Voxelizer {
                 cube_renderer,
                 visualisation_mode: VisualizationMode::Instanced,
                 use_msaa: true,
-                tracer_step_count: 400.0,
+                tracer_step_count: 100.0,
                 tracer_step_length: 0.05,
             }
         }
