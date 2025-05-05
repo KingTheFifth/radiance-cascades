@@ -445,8 +445,8 @@ impl MicroGLUT for App {
             gl,
             6.0,
             screen_resolution,
-            2.0,
-            0.2,
+            1.0,
+            0.11,
             rc_binding,
             scene_matrices_binding,
             hi_z_constants_binding,
@@ -679,8 +679,8 @@ impl MicroGLUT for App {
             let locations = vec![
                 (
                     "Pot".to_string(),
-                    Vec3::new(11.0, 1.5, -1.5),
-                    Vec2::new(5.0, 90.0),
+                    Vec3::new(11.0, 2.7, -2.7),
+                    Vec2::new(-10.5, 90.0),
                 ),
                 (
                     "Corridor".to_string(),
