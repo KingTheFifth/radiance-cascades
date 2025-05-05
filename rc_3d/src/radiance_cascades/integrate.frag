@@ -97,10 +97,10 @@ void main() {
         block_coord_base + offsets[3]
     };
     const ivec2 probe_screen_coords[4] = {
-        probe_coords[0] * int(probe_spacing),
-        probe_coords[1] * int(probe_spacing),
-        probe_coords[2] * int(probe_spacing),
-        probe_coords[3] * int(probe_spacing)
+        probe_coords[0] * int(probe_spacing) + int(0.5 * probe_spacing),
+        probe_coords[1] * int(probe_spacing) + int(0.5 * probe_spacing),
+        probe_coords[2] * int(probe_spacing) + int(0.5 * probe_spacing),
+        probe_coords[3] * int(probe_spacing) + int(0.5 * probe_spacing)
     };
 
     const float depth = linearize_depth(texelFetch(depth_tex, ivec2(gl_FragCoord.xy), 0).x);

@@ -16,7 +16,7 @@ out vec4 color;
 #define NAIVE_SS 0
 #define HI_Z 1
 #define VOXEL 2
-#define TRACE_METHOD VOXEL
+#define TRACE_METHOD NAIVE_SS
 
 #define MISS_COLOR vec4(0.0, 0.0, 0.0, 1.0)
 
@@ -244,7 +244,7 @@ vec4 trace_radiance_hi_z(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_leng
 vec4 trace_radiance_naive_screen_space(vec3 ray_start_vs, vec3 ray_dir_vs, float interval_length) {
     vec3 ray_end_vs = ray_start_vs + ray_dir_vs * interval_length;
 
-    float steps = float(20 * (1 << (int(cascade_index) + 1)));  // TODO: Make configurable
+    float steps = float(20 * pow(1.2, cascade_index));  // TODO: Make configurable
     float step_count_inv = 1.0 / (steps - 1.0);
     for (float i = 0.0; i < steps; i++) {
         float traveled_distance = i * step_count_inv;
@@ -281,7 +281,7 @@ vec4 trace_radiance_voxel(vec3 ray_start_ws, vec3 ray_dir_ws, float interval_len
     return MISS_COLOR;
 }
 
-vec4 get_upper_depth_weights(vec3 probe_pos_ss, vec2 coord_within_block) {
+vec4 get_upper_depth_weights(vec3 probe_pos_ss, vec2 coord_within_block, vec3 normal) {
     const vec2 upper_probe_spacing = vec2(c0_probe_spacing * pow(2.0, cascade_index + 1.0));
     const vec2 upper_probe_count = floor(screen_res / upper_probe_spacing);
 
@@ -304,10 +304,10 @@ vec4 get_upper_depth_weights(vec3 probe_pos_ss, vec2 coord_within_block) {
     };
 
     ivec2 upper_probe_screen_coords[4] = {
-        upper_probe_coords[0] * int(upper_probe_spacing),
-        upper_probe_coords[1] * int(upper_probe_spacing),
-        upper_probe_coords[2] * int(upper_probe_spacing),
-        upper_probe_coords[3] * int(upper_probe_spacing)
+        upper_probe_coords[0] * int(upper_probe_spacing) + int(0.5 * upper_probe_spacing),
+        upper_probe_coords[1] * int(upper_probe_spacing) + int(0.5 * upper_probe_spacing),
+        upper_probe_coords[2] * int(upper_probe_spacing) + int(0.5 * upper_probe_spacing),
+        upper_probe_coords[3] * int(upper_probe_spacing) + int(0.5 * upper_probe_spacing)
     };
 
     float linear_probe_depth = linearize_depth(probe_pos_ss.z);
@@ -323,7 +323,7 @@ vec4 get_upper_depth_weights(vec3 probe_pos_ss, vec2 coord_within_block) {
     float avg_depth = dot(depths, vec4(0.25));
     bool depth_edge = (depth_diff / avg_depth) > 0.1;
 
-    vec4 weights = bilinear_weights;
+    vec4 weights = bilinear_weights;// * normals;
     if (depth_edge) {
         vec4 dd = abs(depths - vec4(linear_probe_depth));
         weights *= vec4(1.0) / (dd + vec4(0.0001));
@@ -333,7 +333,7 @@ vec4 get_upper_depth_weights(vec3 probe_pos_ss, vec2 coord_within_block) {
     return weights;
 }
 
-vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_block) {
+vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_block, vec3 normal) {
     if (radiance.a == 0.0 || cascade_index >= num_cascades - 1.0) {
         return vec4(radiance.rgb, 1.0 - radiance.a);
     }
@@ -362,13 +362,13 @@ vec4 merge(vec4 radiance, vec2 dir_index, vec3 probe_pos_ss, vec2 coord_within_b
     };
 
     ivec2 upper_probe_screen_coords[4] = {
-        upper_probe_coords[0] * int(upper_probe_spacing),
-        upper_probe_coords[1] * int(upper_probe_spacing),
-        upper_probe_coords[2] * int(upper_probe_spacing),
-        upper_probe_coords[3] * int(upper_probe_spacing)
+        upper_probe_coords[0] * int(upper_probe_spacing) + int(0.5 * upper_probe_spacing),
+        upper_probe_coords[1] * int(upper_probe_spacing) + int(0.5 * upper_probe_spacing),
+        upper_probe_coords[2] * int(upper_probe_spacing) + int(0.5 * upper_probe_spacing),
+        upper_probe_coords[3] * int(upper_probe_spacing) + int(0.5 * upper_probe_spacing)
     };
 
-    vec4 weights = get_upper_depth_weights(probe_pos_ss, coord_within_block);
+    vec4 weights = get_upper_depth_weights(probe_pos_ss, coord_within_block, normal);
 
     // Merge this ray direction with the two closest directions in the upper cascade
     vec4 upper_radiance = vec4(0.0);
@@ -410,9 +410,11 @@ void main() {
     const vec2 dir_block_index = floor(pixel_coord / probe_count);
 
     const vec2 probe_pixel = (coord_within_dir_block + 0.5) * probe_spacing; // Probes in center of pixel
-    const vec3 normal_ws = octahedral_decode(texture(scene_normal, probe_pixel * screen_res_inv).xy);
+    const vec2 screen_uv = (coord_within_dir_block + 0.5) / probe_count;
+    //const vec2 screen_uv = (coord_within_dir_block + 0.5) * probe_spacing * screen_res_inv;
+    const vec3 normal_ws = octahedral_decode(texture(scene_normal, screen_uv).xy);
     const vec3 normal_vs = normalize(mat3(world_to_view) * normal_ws);
-    const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, probe_pixel * screen_res_inv, 0).r);
+    const vec3 min_probe_pos_ss = vec3(probe_pixel, textureLod(hi_z_tex, screen_uv, 0).r);
     //const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz + normal_vs * normal_offset;
     const vec3 min_probe_pos_vs = screen_pos_to_view_pos(min_probe_pos_ss).xyz;
     const vec3 min_probe_pos_ws = (world_to_view_inv * vec4(min_probe_pos_vs, 1.0)).xyz;
@@ -462,12 +464,12 @@ void main() {
     #endif
 
     vec4 unmerged_radiance = radiance_min;
-    vec4 merged_radiance = merge(radiance_min, dir_block_index, min_probe_pos_ss, coord_within_dir_block);
+    vec4 merged_radiance = merge(radiance_min, dir_block_index, min_probe_pos_ss, coord_within_dir_block, normal_ws);
     color = merge_cascades ? merged_radiance : unmerged_radiance;
 
     //color = vec4(dir_block_index / vec2(num_azimuthal_rays, num_altitudinal_rays), 0.0, 1.0);
     //color = vec4(coord_within_dir_block / probe_count, 0.0, 1.0);
-    //color = vec4(ray_dir_vs, 1.0);
-    //color = vec4(normal_vs, 1.0);
+    //color = vec4(ray_dir_ws, 1.0);
+    //color = vec4(normal_ws, 1.0);
     //color = vec4(min_probe_pos_ws / 5.0, 1.0);
 }
